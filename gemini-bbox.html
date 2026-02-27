@@ -3,37 +3,64 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gemini API Image Bounding Box Visualization</title>
+    <title>Gemini API Image Bounding Box Visualization (via Vercel AI Gateway)</title>
     <script type="module">
-        import { GoogleGenerativeAI } from "https://esm.run/@google/generative-ai";
         import { marked } from "https://esm.run/marked";
 
+        const AI_GATEWAY_URL = "https://ai-gateway.vercel.sh/v3/ai/language-model";
+
         function getApiKey() {
-            let apiKey = localStorage.getItem("GEMINI_API_KEY");
+            let apiKey = localStorage.getItem("AI_GATEWAY_API_KEY");
             if (!apiKey) {
-                apiKey = prompt("Please enter your Gemini API key:");
+                apiKey = prompt("Please enter your Vercel AI Gateway API key:");
                 if (apiKey) {
-                    localStorage.setItem("GEMINI_API_KEY", apiKey);
+                    localStorage.setItem("AI_GATEWAY_API_KEY", apiKey);
                 }
             }
             return apiKey;
         }
 
-        async function getGenerativeModel(params) {
-            const API_KEY = getApiKey();
-            const genAI = new GoogleGenerativeAI(API_KEY);
-            return genAI.getGenerativeModel(params);
+        async function callGateway(model, prompt, imageBase64, imageMimeType) {
+            const apiKey = getApiKey();
+            const content = [];
+            if (imageBase64) {
+                content.push({ type: "image", image: `data:${imageMimeType};base64,${imageBase64}` });
+            }
+            content.push({ type: "text", text: prompt });
+
+            const response = await fetch(AI_GATEWAY_URL, {
+                method: "POST",
+                headers: {
+                    "Authorization": `Bearer ${apiKey}`,
+                    "Content-Type": "application/json",
+                    "ai-gateway-auth-method": "api-key",
+                    "ai-gateway-protocol-version": "0.0.1",
+                    "ai-language-model-id": model,
+                    "ai-language-model-specification-version": "3",
+                    "ai-language-model-streaming": "false"
+                },
+                body: JSON.stringify({ prompt: [{ role: "user", content }] })
+            });
+
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}));
+                throw new Error(err?.error?.message || `HTTP ${response.status}`);
+            }
+
+            return response.json();
         }
 
-        async function fileToGenerativePart(file) {
+        function extractText(response) {
+            return (response.content || [])
+                .filter(item => item.type === "text")
+                .map(item => item.text)
+                .join("");
+        }
+
+        async function fileToBase64(file) {
             return new Promise((resolve) => {
                 const reader = new FileReader();
-                reader.onloadend = () => resolve({
-                    inlineData: {
-                        data: reader.result.split(",")[1],
-                        mimeType: file.type
-                    }
-                });
+                reader.onloadend = () => resolve(reader.result.split(",")[1]);
                 reader.readAsDataURL(file);
             });
         }
@@ -87,18 +114,22 @@
             document.getElementById('boundingBoxImages').innerHTML = '';
 
             try {
-                const model = await getGenerativeModel({ model: modelSelect.value });
-                let content = [promptInput.value];
+                let imageBase64 = null;
+                let imageMimeType = null;
 
                 if (fileInput.files[0]) {
                     const compressedImage = await resizeAndCompressImage(fileInput.files[0]);
-                    const imagePart = await fileToGenerativePart(compressedImage);
-                    content.push(imagePart);
+                    imageBase64 = await fileToBase64(compressedImage);
+                    imageMimeType = "image/jpeg";
                 }
 
-                const result = await model.generateContent(content);
-                const response = await result.response;
-                const text = response.text();
+                const response = await callGateway(
+                    modelSelect.value,
+                    promptInput.value,
+                    imageBase64,
+                    imageMimeType
+                );
+                const text = extractText(response);
 
                 resultDiv.innerHTML = marked.parse(text);
 
@@ -421,7 +452,7 @@
             const modelSelect = document.getElementById('modelSelect');
             const promptInput = document.getElementById('promptInput');
 
-            if (modelSelect.value === 'gemini-robotics-er-1.5-preview') {
+            if (modelSelect.value === 'google/gemini-robotics-er-1.5-preview') {
                 promptInput.value = 'Point to no more than 10 items in the image. The label returned should be an identifying name for the object detected. The answer should follow the json format: [{"point": [y, x], "label": <label1>}, ...]. The points are in [y, x] format normalized to 0-1000.';
             } else {
                 promptInput.value = 'Return bounding boxes as JSON arrays [ymin, xmin, ymax, xmax]\n';
@@ -494,34 +525,16 @@
     </style>
 </head>
 <body>
-    <h1>Gemini API Image Bounding Box Visualization</h1>
+    <h1>Gemini API Image Bounding Box Visualization (via Vercel AI Gateway)</h1>
     <select id="modelSelect">
-        <option value="gemini-2.5-flash">gemini-2.5-flash (default)</option>
-        <option value="gemini-robotics-er-1.5-preview">gemini-robotics-er-1.5-preview</option>
-        <option value="gemini-3-pro-preview">gemini-3-pro-preview</option>
-        <option value="gemini-2.5-pro">gemini-2.5-pro</option>
-        <option value="gemini-2.5-flash-lite-preview-06-17">gemini-2.5-flash-lite-preview-06-17</option>
-        <option value="gemini-2.5-flash-preview-04-17">gemini-2.5-flash-preview-04-17</option>
-        <option value="gemini-2.5-pro-exp-03-25">gemini-2.5-pro-exp-03-25</option>
-        <option value="gemini-2.5-pro-preview-03-25">gemini-2.5-pro-preview-03-25</option>
-        <option value="gemini-2.0-flash-lite">gemini-2.0-flash-lite</option>
-        <option value="gemini-2.0-pro-exp-02-05">gemini-2.0-pro-exp-02-05</option>
-        <option value="gemini-2.0-flash">gemini-2.0-flash</option>
-        <option value="gemini-2.0-flash-thinking-exp-01-21">gemini-2.0-flash-thinking-exp-01-21</option>
-        <option value="gemini-2.0-flash-thinking-exp-1219">gemini-2.0-flash-thinking-exp-1219</option>
-        <option value="gemini-2.0-flash-exp">gemini-2.0-flash-exp</option>
-        <option value="gemini-exp-1206">gemini-exp-1206</option>
-        <option value="gemini-exp-1121">gemini-exp-1121</option>
-        <option value="gemini-exp-1114">gemini-exp-1114</option>
-        <option value="gemini-1.5-flash-8b-001">gemini-1.5-flash-8b-001</option>
-        <option value="gemini-1.5-flash-8b-latest">gemini-1.5-flash-8b-latest</option>
-        <option value="gemini-1.5-flash-002">gemini-1.5-flash-002</option>
-        <option value="gemini-1.5-pro-002">gemini-1.5-pro-002</option>
-        <option value="gemini-1.5-flash-001">gemini-1.5-flash-001</option>
-        <option value="gemini-1.5-pro-001">gemini-1.5-pro-001</option>
-        <option value="gemini-1.5-flash-latest">gemini-1.5-flash-latest</option>
-        <option value="gemini-1.5-pro-latest">gemini-1.5-pro-latest</option>
-        <option value="gemini-pro">gemini-pro</option>
+        <option value="google/gemini-2.5-flash">google/gemini-2.5-flash (default)</option>
+        <option value="google/gemini-robotics-er-1.5-preview">google/gemini-robotics-er-1.5-preview</option>
+        <option value="google/gemini-2.5-pro">google/gemini-2.5-pro</option>
+        <option value="google/gemini-2.0-flash-lite">google/gemini-2.0-flash-lite</option>
+        <option value="google/gemini-2.0-flash">google/gemini-2.0-flash</option>
+        <option value="google/gemini-1.5-flash-8b">google/gemini-1.5-flash-8b</option>
+        <option value="google/gemini-1.5-flash">google/gemini-1.5-flash</option>
+        <option value="google/gemini-1.5-pro">google/gemini-1.5-pro</option>
     </select>
     <input type="file" id="imageInput" accept="image/*">
     <button id="clearImageBtn">Clear Image</button>
@@ -534,6 +547,5 @@
         <canvas id="canvas"></canvas>
     </div>
     <div id="boundingBoxImages"></div>
-<script type="module" src="footer.js?15532aff"></script>
 </body>
 </html>
