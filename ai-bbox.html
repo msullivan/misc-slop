@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gemini API Image Bounding Box Visualization (via Vercel AI Gateway)</title>
+    <title>Image Bounding Box Visualization (via Vercel AI Gateway)</title>
     <script type="module">
         import { marked } from "https://esm.run/marked";
 
@@ -128,7 +128,8 @@
                     promptInput.value,
                     imageBase64,
                     imageMimeType
-                );
+        );
+                console.log(response);
                 const text = extractText(response);
 
                 resultDiv.innerHTML = marked.parse(text);
@@ -142,6 +143,8 @@
                         displayImageWithPoints(fileInput.files[0], points);
                     } else if (coordinates.length > 0) {
                         displayImageWithBoundingBoxes(fileInput.files[0], coordinates);
+                    } else {
+                        console.warn('No bounding boxes or points found in response:', text);
                     }
                 }
             } catch (error) {
@@ -167,7 +170,7 @@
                     }
                 }
             } catch (e) {
-                // If parsing fails, return empty array
+                console.warn('Failed to parse points JSON:', e.message);
             }
             return [];
         }
@@ -449,14 +452,8 @@
         }
 
         function handleModelChange() {
-            const modelSelect = document.getElementById('modelSelect');
             const promptInput = document.getElementById('promptInput');
-
-            if (modelSelect.value === 'google/gemini-robotics-er-1.5-preview') {
-                promptInput.value = 'Point to no more than 12 items in the image. The label returned should be an identifying name for the object detected. The answer should follow the json format: [{"point": [y, x], "label": <label1>}, ...]. The points are in [y, x] format normalized to 0-1000.';
-            } else {
-                promptInput.value = 'Return bounding boxes as a JSON array of objects: [{"label": "...", "box_2d": [ymin, xmin, ymax, xmax]}, ...]\n';
-            }
+            promptInput.value = 'Return bounding boxes as a JSON array of objects: [{"label": "...", "box_2d": [ymin, xmin, ymax, xmax]}, ...]. All coordinates should be integers.\n';
         }
 
         function initializeFromURL() {
@@ -525,17 +522,43 @@
     </style>
 </head>
 <body>
-    <h1>Gemini API Image Bounding Box Visualization (via Vercel AI Gateway)</h1>
+    <h1>Image Bounding Box Visualization (via Vercel AI Gateway)</h1>
+    <p>Based on <a href="https://tools.simonwillison.net/gemini-bbox">Simon Willison's gemini-bbox tool</a>.</p>
     <select id="modelSelect">
         <optgroup label="Google">
             <option value="google/gemini-2.5-flash">google/gemini-2.5-flash (default)</option>
-            <option value="google/gemini-robotics-er-1.5-preview">google/gemini-robotics-er-1.5-preview</option>
+            <option value="google/gemini-3.1-pro-preview">google/gemini-3.1-pro-preview</option>
+            <option value="google/gemini-3-pro-preview">google/gemini-3-pro-preview</option>
+            <option value="google/gemini-3-flash">google/gemini-3-flash</option>
+            <option value="google/gemini-2.5-flash-preview-09-2025">google/gemini-2.5-flash-preview-09-2025</option>
+            <option value="google/gemini-2.5-flash-lite">google/gemini-2.5-flash-lite</option>
+            <option value="google/gemini-2.5-flash-lite-preview-09-2025">google/gemini-2.5-flash-lite-preview-09-2025</option>
             <option value="google/gemini-2.5-pro">google/gemini-2.5-pro</option>
             <option value="google/gemini-2.0-flash-lite">google/gemini-2.0-flash-lite</option>
             <option value="google/gemini-2.0-flash">google/gemini-2.0-flash</option>
             <option value="google/gemini-1.5-flash-8b">google/gemini-1.5-flash-8b</option>
             <option value="google/gemini-1.5-flash">google/gemini-1.5-flash</option>
             <option value="google/gemini-1.5-pro">google/gemini-1.5-pro</option>
+        </optgroup>
+        <optgroup label="Mistral">
+            <option value="mistral/pixtral-large">mistral/pixtral-large</option>
+            <option value="mistral/pixtral-12b">mistral/pixtral-12b</option>
+        </optgroup>
+        <optgroup label="Alibaba">
+            <option value="alibaba/qwen3-vl-thinking">alibaba/qwen3-vl-thinking</option>
+            <option value="alibaba/qwen3-vl-instruct">alibaba/qwen3-vl-instruct</option>
+            <option value="alibaba/qwen3.5-plus">alibaba/qwen3.5-plus</option>
+            <option value="alibaba/qwen3.5-flash">alibaba/qwen3.5-flash</option>
+        </optgroup>
+        <optgroup label="ZhipuAI">
+            <option value="zai/glm-4.6v">zai/glm-4.6v</option>
+            <option value="zai/glm-4.6v-flash">zai/glm-4.6v-flash</option>
+        </optgroup>
+        <optgroup label="Moonshot">
+            <option value="moonshotai/kimi-k2.5">moonshotai/kimi-k2.5</option>
+        </optgroup>
+        <optgroup label="Meta">
+            <option value="meta/llama-4-maverick">meta/llama-4-maverick</option>
         </optgroup>
         <optgroup label="Anthropic">
             <option value="anthropic/claude-opus-4.6">anthropic/claude-opus-4.6</option>
