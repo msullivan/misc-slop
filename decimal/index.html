@@ -50,37 +50,6 @@
     overflow: hidden;
   }
 
-  /* Hour tick marks */
-  .tick {
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    transform-origin: 0 0;
-    pointer-events: none;
-  }
-
-  .tick-line {
-    position: absolute;
-    background: #3a3020;
-    border-radius: 1px;
-  }
-
-  /* Numerals */
-  .numeral {
-    position: absolute;
-    font-family: 'Georgia', serif;
-    font-size: 16px;
-    font-weight: bold;
-    color: #2a2015;
-    text-align: center;
-    width: 24px;
-    height: 24px;
-    line-height: 24px;
-    margin-left: -12px;
-    margin-top: -12px;
-    transform-origin: center center;
-  }
-
   /* Center jewel */
   .center-jewel {
     position: absolute;
@@ -179,7 +148,6 @@
 <!-- Analog watch -->
 <div class="watch-container">
   <div class="watch-face" id="watchFace">
-    <!-- ticks and numerals injected by JS -->
     <div class="hand-wrapper" id="handWrapper">
       <div class="hand"></div>
     </div>
@@ -207,33 +175,8 @@ const TAU = Math.PI * 2;
 // Build watch face
 function buildFace() {
   const face = document.getElementById('watchFace');
-  const cx = 150, cy = 150; // center (in a 300×300 element)
-  const r = 150;
 
-  // 10 major ticks + numerals, 100 minor ticks
-  for (let i = 0; i < 100; i++) {
-    const angle = (i / 100) * TAU - Math.PI / 2;
-    const isMajor = i % 10 === 0;
-    const isHalf  = i % 5 === 0 && !isMajor;
-
-    // Tick lengths (from edge inward)
-    const len   = isMajor ? 16 : isHalf ? 9 : 5;
-    const width = isMajor ? 2  : 1;
-    const r_out = r - 6;
-    const r_in  = r_out - len;
-
-    const x1 = cx + r_out * Math.cos(angle);
-    const y1 = cy + r_out * Math.sin(angle);
-    const x2 = cx + r_in  * Math.cos(angle);
-    const y2 = cy + r_in  * Math.sin(angle);
-
-    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-    // We'll use SVG overlay instead — easier
-    // (reset approach: use SVG for the whole face)
-    _ = null; // placeholder
-  }
-
-  // Rebuild using SVG
+  // Build using SVG
   face.innerHTML = '';
 
   // SVG layer
@@ -378,7 +321,7 @@ function update() {
 
 buildFace();
 update();
-setInterval(update, 500);
+setInterval(update, 864);
 </script>
 </body>
 </html>
