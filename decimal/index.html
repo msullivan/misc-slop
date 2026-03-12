@@ -288,7 +288,7 @@ function toDecimal(date) {
 
 function pad2(n) { return String(n).padStart(2, '0'); }
 
-let lastAngle = null;
+let cumulativeDeg = null;
 
 function update() {
   const now = new Date();
@@ -302,20 +302,19 @@ function update() {
   document.getElementById('normalTime').textContent =
     now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
-  // Analog hand: one revolution per day
-  // fractionOfDay 0→1 maps to 0→360 degrees
-  // But we want smooth motion — avoid wrap-around jump
-  const targetDeg = fractionOfDay * 360;
+  const rawDeg = fractionOfDay * 360;
   const wrapper = document.getElementById('handWrapper');
   if (wrapper) {
-    // Remove transition on first frame to avoid spinning from 0
-    if (lastAngle === null) {
+    if (cumulativeDeg === null) {
+      cumulativeDeg = rawDeg;
       wrapper.style.transition = 'none';
     } else {
+      let delta = rawDeg - (cumulativeDeg % 360);
+      if (delta < -180) delta += 360;
+      cumulativeDeg += delta;
       wrapper.style.transition = 'transform 0.6s cubic-bezier(0.4, 0, 0.2, 1)';
     }
-    wrapper.style.transform = `rotate(${targetDeg}deg)`;
-    lastAngle = targetDeg;
+    wrapper.style.transform = `rotate(${cumulativeDeg}deg)`;
   }
 }
 
