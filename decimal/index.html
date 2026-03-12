@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Decimal Time</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #1a1a1a;
+    color: #e8e0d0;
+    font-family: 'Georgia', serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 40px;
+    padding: 40px 20px;
+  }
+
+  h1 {
+    font-size: 1rem;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    color: #888;
+    font-weight: normal;
+  }
+
+  /* ── Analog clock ── */
+  .watch-container {
+    position: relative;
+    width: 300px;
+    height: 300px;
+  }
+
+  .watch-face {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #f5f0e8, #e8e0cc 60%, #d4c8b0);
+    box-shadow:
+      0 0 0 8px #2a2a2a,
+      0 0 0 12px #444,
+      0 0 0 16px #222,
+      0 8px 40px rgba(0,0,0,0.8),
+      inset 0 2px 6px rgba(255,255,255,0.3);
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* Hour tick marks */
+  .tick {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform-origin: 0 0;
+    pointer-events: none;
+  }
+
+  .tick-line {
+    position: absolute;
+    background: #3a3020;
+    border-radius: 1px;
+  }
+
+  /* Numerals */
+  .numeral {
+    position: absolute;
+    font-family: 'Georgia', serif;
+    font-size: 16px;
+    font-weight: bold;
+    color: #2a2015;
+    text-align: center;
+    width: 24px;
+    height: 24px;
+    line-height: 24px;
+    margin-left: -12px;
+    margin-top: -12px;
+    transform-origin: center center;
+  }
+
+  /* Center jewel */
+  .center-jewel {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, #888, #333);
+    transform: translate(-50%, -50%);
+    z-index: 10;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.5);
+  }
+
+  /* Single hand */
+  .hand-wrapper {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 0;
+    height: 0;
+    transform-origin: 0 0;
+    transition: transform 1s cubic-bezier(0.4, 2.08, 0.55, 0.44);
+    z-index: 5;
+  }
+
+  .hand {
+    position: absolute;
+    /* Hand extends from center outward */
+    width: 3px;
+    height: 110px;
+    background: linear-gradient(to bottom, #1a1a1a, #3a3030);
+    border-radius: 2px 2px 1px 1px;
+    left: -1.5px;
+    bottom: 0;
+    box-shadow: 0 0 4px rgba(0,0,0,0.4);
+  }
+
+  /* Counterweight tail */
+  .hand::after {
+    content: '';
+    position: absolute;
+    width: 5px;
+    height: 22px;
+    background: linear-gradient(to top, #555, #2a2a2a);
+    border-radius: 2px;
+    left: -1px;
+    bottom: -22px;
+  }
+
+  /* ── Digital display ── */
+  .digital {
+    text-align: center;
+  }
+
+  .digital-time {
+    font-size: 4rem;
+    font-family: 'Courier New', monospace;
+    letter-spacing: 0.05em;
+    color: #e8d8a0;
+    text-shadow: 0 0 20px rgba(232, 216, 160, 0.3);
+    line-height: 1;
+  }
+
+  .digital-label {
+    font-size: 0.7rem;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: #666;
+    margin-top: 8px;
+  }
+
+  /* ── Normal time (small) ── */
+  .normal-time {
+    font-size: 0.85rem;
+    color: #555;
+    letter-spacing: 0.1em;
+    font-family: 'Courier New', monospace;
+  }
+
+  /* ── Info ── */
+  .info {
+    font-size: 0.72rem;
+    color: #444;
+    text-align: center;
+    max-width: 320px;
+    line-height: 1.7;
+    letter-spacing: 0.04em;
+  }
+</style>
+</head>
+<body>
+
+<h1>Decimal Time</h1>
+
+<!-- Analog watch -->
+<div class="watch-container">
+  <div class="watch-face" id="watchFace">
+    <!-- ticks and numerals injected by JS -->
+    <div class="hand-wrapper" id="handWrapper">
+      <div class="hand"></div>
+    </div>
+    <div class="center-jewel"></div>
+  </div>
+</div>
+
+<!-- Digital readout -->
+<div class="digital">
+  <div class="digital-time" id="digitalTime">0:00:00</div>
+  <div class="digital-label">hours · minutes · seconds</div>
+</div>
+
+<div class="normal-time" id="normalTime"></div>
+
+<div class="info">
+  The French Revolutionary decimal clock divides the day into
+  10&nbsp;hours, each hour into 100&nbsp;minutes, each minute into 100&nbsp;seconds.
+  A single hand completes one revolution per day.
+</div>
+
+<script>
+const TAU = Math.PI * 2;
+
+// Build watch face
+function buildFace() {
+  const face = document.getElementById('watchFace');
+  const cx = 150, cy = 150; // center (in a 300×300 element)
+  const r = 150;
+
+  // 10 major ticks + numerals, 100 minor ticks
+  for (let i = 0; i < 100; i++) {
+    const angle = (i / 100) * TAU - Math.PI / 2;
+    const isMajor = i % 10 === 0;
+    const isHalf  = i % 5 === 0 && !isMajor;
+
+    // Tick lengths (from edge inward)
+    const len   = isMajor ? 16 : isHalf ? 9 : 5;
+    const width = isMajor ? 2  : 1;
+    const r_out = r - 6;
+    const r_in  = r_out - len;
+
+    const x1 = cx + r_out * Math.cos(angle);
+    const y1 = cy + r_out * Math.sin(angle);
+    const x2 = cx + r_in  * Math.cos(angle);
+    const y2 = cy + r_in  * Math.sin(angle);
+
+    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    // We'll use SVG overlay instead — easier
+    // (reset approach: use SVG for the whole face)
+    _ = null; // placeholder
+  }
+
+  // Rebuild using SVG
+  face.innerHTML = '';
+
+  // SVG layer
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 300 300');
+  svg.setAttribute('width', '300');
+  svg.setAttribute('height', '300');
+  svg.style.position = 'absolute';
+  svg.style.top = '0'; svg.style.left = '0';
+
+  // Background circle (gradient handled in CSS, but we need the SVG circle too)
+  const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+  const grad = document.createElementNS('http://www.w3.org/2000/svg', 'radialGradient');
+  grad.setAttribute('id', 'faceGrad');
+  grad.setAttribute('cx', '38%'); grad.setAttribute('cy', '32%');
+  grad.setAttribute('r', '65%');
+  const s1 = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
+  s1.setAttribute('offset', '0%'); s1.setAttribute('stop-color', '#f8f3eb');
+  const s2 = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
+  s2.setAttribute('offset', '100%'); s2.setAttribute('stop-color', '#cfc4a8');
+  grad.appendChild(s1); grad.appendChild(s2);
+  defs.appendChild(grad);
+  svg.appendChild(defs);
+
+  const bg = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+  bg.setAttribute('cx', 150); bg.setAttribute('cy', 150); bg.setAttribute('r', 150);
+  bg.setAttribute('fill', 'url(#faceGrad)');
+  svg.appendChild(bg);
+
+  // Ticks
+  for (let i = 0; i < 100; i++) {
+    const angle = (i / 100) * TAU - Math.PI / 2;
+    const isMajor = i % 10 === 0;
+    const isHalf  = i % 5 === 0 && !isMajor;
+
+    const len   = isMajor ? 15 : isHalf ? 8 : 4;
+    const width = isMajor ? 2 : 1;
+    const r_out = 142;
+    const r_in  = r_out - len;
+
+    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    line.setAttribute('x1', 150 + r_out * Math.cos(angle));
+    line.setAttribute('y1', 150 + r_out * Math.sin(angle));
+    line.setAttribute('x2', 150 + r_in  * Math.cos(angle));
+    line.setAttribute('y2', 150 + r_in  * Math.sin(angle));
+    line.setAttribute('stroke', isMajor ? '#2a2015' : '#7a7060');
+    line.setAttribute('stroke-width', width);
+    line.setAttribute('stroke-linecap', 'round');
+    svg.appendChild(line);
+  }
+
+  // Numerals 1–10
+  for (let h = 1; h <= 10; h++) {
+    const angle = (h / 10) * TAU - Math.PI / 2;
+    const nr = 117;
+    const x = 150 + nr * Math.cos(angle);
+    const y = 150 + nr * Math.sin(angle);
+
+    const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    text.setAttribute('x', x);
+    text.setAttribute('y', y);
+    text.setAttribute('text-anchor', 'middle');
+    text.setAttribute('dominant-baseline', 'central');
+    text.setAttribute('font-family', 'Georgia, serif');
+    text.setAttribute('font-size', h === 10 ? '15' : '17');
+    text.setAttribute('font-weight', 'bold');
+    text.setAttribute('fill', '#2a2015');
+    text.textContent = h === 10 ? '10' : h;
+    svg.appendChild(text);
+  }
+
+  // Subtle inner chapter ring
+  const ring = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+  ring.setAttribute('cx', 150); ring.setAttribute('cy', 150); ring.setAttribute('r', 97);
+  ring.setAttribute('fill', 'none');
+  ring.setAttribute('stroke', '#c0b090');
+  ring.setAttribute('stroke-width', '0.5');
+  svg.appendChild(ring);
+
+  face.appendChild(svg);
+
+  // Hand wrapper (on top of SVG)
+  const handWrapper = document.createElement('div');
+  handWrapper.id = 'handWrapper';
+  handWrapper.className = 'hand-wrapper';
+  handWrapper.innerHTML = '<div class="hand"></div>';
+  face.appendChild(handWrapper);
+
+  // Center jewel
+  const jewel = document.createElement('div');
+  jewel.className = 'center-jewel';
+  face.appendChild(jewel);
+}
+
+// ── Decimal time logic ──
+function toDecimal(date) {
+  const midnight = new Date(date);
+  midnight.setHours(0, 0, 0, 0);
+  const msSinceMidnight = date - midnight;
+  const fractionOfDay = msSinceMidnight / 86400000;
+
+  const totalDecSeconds = fractionOfDay * 100000; // 10h × 100m × 100s
+  const dHour = Math.floor(totalDecSeconds / 10000);
+  const dMin  = Math.floor((totalDecSeconds % 10000) / 100);
+  const dSec  = Math.floor(totalDecSeconds % 100);
+
+  return { dHour, dMin, dSec, fractionOfDay };
+}
+
+function pad2(n) { return String(n).padStart(2, '0'); }
+
+let lastAngle = null;
+
+function update() {
+  const now = new Date();
+  const { dHour, dMin, dSec, fractionOfDay } = toDecimal(now);
+
+  // Digital
+  document.getElementById('digitalTime').textContent =
+    `${dHour}:${pad2(dMin)}:${pad2(dSec)}`;
+
+  // Normal time (small)
+  document.getElementById('normalTime').textContent =
+    now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+  // Analog hand: one revolution per day
+  // fractionOfDay 0→1 maps to 0→360 degrees
+  // But we want smooth motion — avoid wrap-around jump
+  const targetDeg = fractionOfDay * 360;
+  const wrapper = document.getElementById('handWrapper');
+  if (wrapper) {
+    // Remove transition on first frame to avoid spinning from 0
+    if (lastAngle === null) {
+      wrapper.style.transition = 'none';
+    } else {
+      wrapper.style.transition = 'transform 0.6s cubic-bezier(0.4, 0, 0.2, 1)';
+    }
+    wrapper.style.transform = `rotate(${targetDeg}deg)`;
+    lastAngle = targetDeg;
+  }
+}
+
+buildFace();
+update();
+setInterval(update, 500);
+</script>
+</body>
+</html>
