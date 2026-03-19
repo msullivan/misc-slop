@@ -1,85 +1,83 @@
+"""Nearest-neighbor analogy search using cached word2vec vectors.
+
+Run cache-w2v.py first to generate w2v-100k.npz.
+"""
+
 import sys
+import os
 import numpy as np
-import gensim.downloader as api
 
-def cosine_similarity(a, b):
-    return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
+DIR = os.path.dirname(__file__)
+VECS_PATH = os.path.join(DIR, "w2v-vecs.npy")
+WORDS_PATH = os.path.join(DIR, "w2v-words.npy")
 
-model = api.load("word2vec-google-news-300")
 
-pairs = [
-    ("king", "queen", "man", "woman"),
-    ("uncle", "aunt", "man", "woman"),
-    ("dog", "puppy", "cat", "kitten"),
-    ("walk", "walked", "run", "ran"),
-    ("good", "better", "bad", "worse"),
-    ("spain", "spanish", "france", "french"),
-    ("paris", "france", "tokyo", "japan"),
-]
+def load():
+    if not os.path.exists(VECS_PATH):
+        sys.exit(f"Error: {VECS_PATH} not found. Run cache-w2v.py first.")
+    words = list(np.load(WORDS_PATH, allow_pickle=True))
+    vecs = np.load(VECS_PATH, mmap_mode="r")
+    norms = np.linalg.norm(vecs, axis=1, keepdims=True)
+    norms[norms == 0] = 1
+    normed = vecs / norms
+    word_to_idx = {w: i for i, w in enumerate(words)}
+    return words, vecs, normed, word_to_idx
 
-# 1) Classic analogy: a1 - b1 + b2 ≈ a2?
-print("=== Classic analogy: a1 - b1 + b2 → top 5 ===\n")
-for a1, a2, b1, b2 in pairs:
-    results = model.most_similar(positive=[a1, b2], negative=[b1], topn=5)
-    rank = next((i for i, (w, _) in enumerate(results) if w == a2), None)
-    top = ", ".join(f"{w} ({s:.3f})" for w, s in results)
-    label = f"{b1}→{b2} :: {a1}→?"
-    hit = f"  ✓ '{a2}' at rank {rank+1}" if rank is not None else f"  ✗ '{a2}' not in top 5"
-    print(f"  {label}")
-    print(f"    {top}")
-    print(f"    {hit}\n")
 
-# 2) Averaged difference vectors for gender relationship
-print("=== Averaged relationship vectors ===\n")
-gender_pairs = [
-    ("king", "queen"), ("man", "woman"), ("uncle", "aunt"),
-    ("brother", "sister"), ("husband", "wife"), ("boy", "girl"),
-    ("father", "mother"), ("son", "daughter"), ("prince", "princess"),
-    ("actor", "actress"), ("hero", "heroine"), ("waiter", "waitress"),
-]
+def most_similar(query_vec, normed, words, exclude_idxs, topn=10):
+    query_norm = query_vec / np.linalg.norm(query_vec)
+    sims = normed @ query_norm
+    for idx in exclude_idxs:
+        sims[idx] = -2
+    best = np.argsort(sims)[-topn:][::-1]
+    return [(words[i], float(sims[i])) for i in best]
 
-diffs = [model[f] - model[m] for m, f in gender_pairs if m in model and f in model]
-avg_gender = np.mean(diffs, axis=0)
 
-print(f"  Gender vector averaged from {len(diffs)} pairs")
-print(f"  Per-pair cosine similarity with the average:\n")
-for m, f in gender_pairs:
-    if m in model and f in model:
-        d = model[f] - model[m]
-        sim = cosine_similarity(d, avg_gender)
-        print(f"    {m:>10}→{f:<10}  {sim:.4f}")
+def main():
+    if len(sys.argv) < 4:
+        print("Usage: python analogy-w2v.py <a1> <a2> <b1> [b2]", file=sys.stderr)
+        print("  Finds: a1 → a2 :: b1 → ?", file=sys.stderr)
+        print("  If b2 given, checks whether it appears in top results.", file=sys.stderr)
+        sys.exit(1)
 
-# Now test pairwise similarity with the averaged vector
-print(f"\n  Pairwise (raw single-pair vs averaged):\n")
-test = [("king", "queen"), ("uncle", "aunt"), ("boy", "girl")]
-for i, (m1, f1) in enumerate(test):
-    for m2, f2 in test[i+1:]:
-        d1 = model[f1] - model[m1]
-        d2 = model[f2] - model[m2]
-        raw = cosine_similarity(d1, d2)
-        print(f"    {m1}→{f1} vs {m2}→{f2}:  raw={raw:.4f}")
-print(f"\n  vs averaged gender vector similarity between any two pairs ≈ 0.85+")
+    a1, a2, b1 = sys.argv[1], sys.argv[2], sys.argv[3]
+    b2 = sys.argv[4] if len(sys.argv) > 4 else None
 
-# 3) Tense relationship averaged
-print("\n=== Tense (present→past) averaged ===\n")
-tense_pairs = [
-    ("walk", "walked"), ("run", "ran"), ("eat", "ate"),
-    ("go", "went"), ("take", "took"), ("give", "gave"),
-    ("see", "saw"), ("think", "thought"), ("make", "made"),
-    ("come", "came"), ("find", "found"), ("know", "knew"),
-]
+    words, vecs, normed, word_to_idx = load()
 
-tense_diffs = [model[past] - model[pres] for pres, past in tense_pairs if pres in model and past in model]
-avg_tense = np.mean(tense_diffs, axis=0)
+    check_words = [a1, a2, b1] + ([b2] if b2 else [])
+    for w in check_words:
+        if w not in word_to_idx:
+            print(f"Error: '{w}' not in vocabulary", file=sys.stderr)
+            sys.exit(1)
 
-print(f"  Tense vector averaged from {len(tense_diffs)} pairs")
-print(f"  Per-pair cosine similarity with the average:\n")
-for pres, past in tense_pairs:
-    if pres in model and past in model:
-        d = model[past] - model[pres]
-        sim = cosine_similarity(d, avg_tense)
-        print(f"    {pres:>10}→{past:<10}  {sim:.4f}")
+    va1 = vecs[word_to_idx[a1]]
+    va2 = vecs[word_to_idx[a2]]
+    vb1 = vecs[word_to_idx[b1]]
 
-# Cross-relationship: gender avg vs tense avg
-print(f"\n=== Cross-relationship (should be ~0) ===\n")
-print(f"  gender_avg · tense_avg = {cosine_similarity(avg_gender, avg_tense):.4f}")
+    query = vb1 - va1 + va2
+    exclude = {word_to_idx[w] for w in [a1, a2, b1]}
+    results = most_similar(query, normed, words, exclude, topn=10)
+
+    print(f"  {a1} → {a2} :: {b1} → ?")
+    print(f"  Top 10 nearest neighbors:\n")
+    for i, (w, s) in enumerate(results):
+        marker = " ←" if b2 and w == b2 else ""
+        print(f"    {i+1:>2}. {w:<30} {s:.4f}{marker}")
+
+    if b2:
+        rank = next((i for i, (w, _) in enumerate(results) if w == b2), None)
+        if rank is not None:
+            print(f"\n  ✓ '{b2}' found at rank {rank + 1}")
+        else:
+            print(f"\n  ✗ '{b2}' not in top 10")
+
+        vb2 = vecs[word_to_idx[b2]]
+        diff_a = va2 - va1
+        diff_b = vb2 - vb1
+        cos = np.dot(diff_a, diff_b) / (np.linalg.norm(diff_a) * np.linalg.norm(diff_b))
+        print(f"\n  Raw difference vector cosine similarity: {cos:.4f}")
+
+
+if __name__ == "__main__":
+    main()

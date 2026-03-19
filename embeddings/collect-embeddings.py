@@ -81,7 +81,7 @@ def init_db(db_path):
 
 
 def main():
-    db_path = "embeddings.db"
+    db_path = os.path.join(os.path.dirname(__file__), "embeddings.db")
     api_key = get_api_key()
     words = get_words()
 
