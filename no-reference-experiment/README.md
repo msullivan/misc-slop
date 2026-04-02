@@ -44,15 +44,15 @@ No image was attached. Text models were asked to describe something that wasn't 
 
 | Model | File | Response |
 |---|---|---|
-| Claude Sonnet 4.6 | [`describe/claude-sonnet-4.6.txt`](describe/claude-sonnet-4.6.txt) | Politely says no image is attached, asks to share it |
-| Claude Opus 4.6 | [`describe/claude-opus-4.6.txt`](describe/claude-opus-4.6.txt) | Politely says no image is attached, asks to try again |
-| GPT-5.1 | [`describe/gpt-5.1.txt`](describe/gpt-5.1.txt) | Says no image attached, offers to describe if uploaded |
-| GPT-4o | [`describe/gpt-4o.txt`](describe/gpt-4o.txt) | Says "I can't directly view or describe images" (incorrect about its own capabilities) |
-| Gemini 3 Pro | [`describe/gemini-3-pro.txt`](describe/gemini-3-pro.txt) | **Hallucinated an entire image** — described a split-level swimming pool photo in vivid detail |
-| Gemini 3.1 Pro | [`describe/gemini-3.1-pro.txt`](describe/gemini-3.1-pro.txt) | **Hallucinated again** — invented a cozy vintage workspace with a CRT computer, desk lamp, bookcase, and framed photos |
-| Gemini 2.5 Flash | [`describe/gemini-flash.txt`](describe/gemini-flash.txt) | Says it can't process image uploads (incorrect, but didn't hallucinate) |
-| Grok 3 | [`describe/grok-3.txt`](describe/grok-3.txt) | Politely says no image attached, asks to upload or provide a link |
-| Llama 4 Maverick | [`describe/llama-4-maverick.txt`](describe/llama-4-maverick.txt) | Says it's text-only and can't receive images |
+| Claude Sonnet 4.6 | [`describe/claude-sonnet-4.6.md`](describe/claude-sonnet-4.6.md) | Politely says no image is attached, asks to share it |
+| Claude Opus 4.6 | [`describe/claude-opus-4.6.md`](describe/claude-opus-4.6.md) | Politely says no image is attached, asks to try again |
+| GPT-5.1 | [`describe/gpt-5.1.md`](describe/gpt-5.1.md) | Says no image attached, offers to describe if uploaded |
+| GPT-4o | [`describe/gpt-4o.md`](describe/gpt-4o.md) | Says "I can't directly view or describe images" (incorrect about its own capabilities) |
+| Gemini 3 Pro | [`describe/gemini-3-pro.md`](describe/gemini-3-pro.md) | **Hallucinated an entire image** — described a split-level swimming pool photo in vivid detail |
+| Gemini 3.1 Pro | [`describe/gemini-3.1-pro.md`](describe/gemini-3.1-pro.md) | **Hallucinated again** — invented a cozy vintage workspace with a CRT computer, desk lamp, bookcase, and framed photos |
+| Gemini 2.5 Flash | [`describe/gemini-flash.md`](describe/gemini-flash.md) | Says it can't process image uploads (incorrect, but didn't hallucinate) |
+| Grok 3 | [`describe/grok-3.md`](describe/grok-3.md) | Politely says no image attached, asks to upload or provide a link |
+| Llama 4 Maverick | [`describe/llama-4-maverick.md`](describe/llama-4-maverick.md) | Says it's text-only and can't receive images |
 
 ### Highlights
 
@@ -69,15 +69,15 @@ A more specific version of experiment 2 — asking about a concrete detail in a 
 
 | Model | File | Response |
 |---|---|---|
-| Claude Sonnet 4.6 | [`describe/moon-claude-sonnet-4.6.txt`](describe/moon-claude-sonnet-4.6.txt) | No image attached, asks to upload |
-| Claude Opus 4.6 | [`describe/moon-claude-opus-4.6.txt`](describe/moon-claude-opus-4.6.txt) | No image attached, asks to upload |
-| GPT-5.1 | [`describe/moon-gpt-5.1.txt`](describe/moon-gpt-5.1.txt) | No image attached, asks to re-upload |
-| GPT-4o | [`describe/moon-gpt-4o.txt`](describe/moon-gpt-4o.txt) | "I can't view or analyze images" (still wrong about itself) |
-| Gemini 3 Pro | [`describe/moon-gemini-3-pro.txt`](describe/moon-gemini-3-pro.txt) | **Hallucinated** — "waxing crescent" on a smartphone screen, also invented a planet and a comet |
-| Gemini 3.1 Pro | [`describe/moon-gemini-3.1-pro.txt`](describe/moon-gemini-3.1-pro.txt) | Correctly said "It looks like you forgot to attach the image" — improvement over 3 Pro |
-| Gemini 2.5 Flash | [`describe/moon-gemini-flash.txt`](describe/moon-gemini-flash.txt) | Can't see images, offered to generate a moon image instead |
-| Grok 3 | [`describe/moon-grok-3.txt`](describe/moon-grok-3.txt) | No image attached, helpfully listed all 8 moon phases |
-| Llama 4 Maverick | [`describe/moon-llama-4-maverick.txt`](describe/moon-llama-4-maverick.txt) | Says it's text-only, offers a guided questionnaire to identify the phase |
+| Claude Sonnet 4.6 | [`describe/moon-claude-sonnet-4.6.md`](describe/moon-claude-sonnet-4.6.md) | No image attached, asks to upload |
+| Claude Opus 4.6 | [`describe/moon-claude-opus-4.6.md`](describe/moon-claude-opus-4.6.md) | No image attached, asks to upload |
+| GPT-5.1 | [`describe/moon-gpt-5.1.md`](describe/moon-gpt-5.1.md) | No image attached, asks to re-upload |
+| GPT-4o | [`describe/moon-gpt-4o.md`](describe/moon-gpt-4o.md) | "I can't view or analyze images" (still wrong about itself) |
+| Gemini 3 Pro | [`describe/moon-gemini-3-pro.md`](describe/moon-gemini-3-pro.md) | **Hallucinated** — "waxing crescent" on a smartphone screen, also invented a planet and a comet |
+| Gemini 3.1 Pro | [`describe/moon-gemini-3.1-pro.md`](describe/moon-gemini-3.1-pro.md) | Correctly said "It looks like you forgot to attach the image" — improvement over 3 Pro |
+| Gemini 2.5 Flash | [`describe/moon-gemini-flash.md`](describe/moon-gemini-flash.md) | Can't see images, offered to generate a moon image instead |
+| Grok 3 | [`describe/moon-grok-3.md`](describe/moon-grok-3.md) | No image attached, helpfully listed all 8 moon phases |
+| Llama 4 Maverick | [`describe/moon-llama-4-maverick.md`](describe/moon-llama-4-maverick.md) | Says it's text-only, offers a guided questionnaire to identify the phase |
 
 ### Highlights
 
