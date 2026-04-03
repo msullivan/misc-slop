@@ -1,0 +1,5 @@
+The debate over the greatest footballer of all time among Pelé, Diego Maradona, and Lionel Messi is one with no definitive answer, as each player defined an era and excelled in different ways. Pelé is celebrated for his incredible goal-scoring record and his unique achievement of winning three World Cups. Maradona is revered for his sublime skill and his almost single-handed inspiration of Argentina to World Cup glory in 1986, as well as his transformative impact on Napoli. Lionel Messi is renowned for his unparalleled consistency, his record number of Ballon d'Or awards, his dominance at club level with Barcelona, and finally achieving World Cup success with Argentina in 2022.
+
+Ultimately, the choice depends on the criteria one values most: World Cup triumphs, individual brilliance and impact, or sustained excellence over a long career. Many argue that Messi's recent World Cup victory, combined with his extraordinary club career and individual accolades, gives him a slight edge in this eternal debate.
+
+FINAL ANSWER: Lionel Messi
