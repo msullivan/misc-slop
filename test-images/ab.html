@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>A/B Image Test</title>
+<style>
+  body { font-family: sans-serif; background: #111; color: #eee; margin: 0; padding: 20px; }
+  h1 { text-align: center; font-size: 1.2em; color: #aaa; margin-bottom: 30px; }
+  .pair { display: flex; gap: 12px; margin-bottom: 40px; }
+  .side { flex: 1; }
+  .side img { width: 100%; display: block; border-radius: 6px; }
+  .label { text-align: center; margin-top: 8px; font-size: 1em; color: #888; min-height: 1.4em; }
+  .label.revealed { color: #eee; }
+  .prompt { text-align: center; font-size: 0.85em; color: #666; margin-bottom: 8px; }
+  .reveal-btn {
+    display: block; margin: 0 auto 10px;
+    background: #333; color: #aaa; border: 1px solid #555;
+    padding: 6px 16px; border-radius: 4px; cursor: pointer; font-size: 0.9em;
+  }
+  .reveal-btn:hover { background: #444; }
+  hr { border-color: #333; margin: 10px 0 30px; }
+</style>
+</head>
+<body>
+<h1>Which do you prefer? (click "Reveal" to see which model is which)</h1>
+<div id="pairs"></div>
+
+<script>
+const pairs = [
+  {
+    prompt: "Red fox in snowy forest, photorealistic",
+    images: [
+      { file: "1-fox-gpt-image-2.png", model: "gpt-image-2" },
+      { file: "1-fox-gemini.png",       model: "Gemini 3 Pro" },
+    ]
+  },
+  {
+    prompt: "Cyberpunk cityscape at night",
+    images: [
+      { file: "2-city-gpt-image-2.png", model: "gpt-image-2" },
+      { file: "2-city-gemini.png",       model: "Gemini 3 Pro" },
+    ]
+  },
+  {
+    prompt: "Japanese tea garden, watercolor style",
+    images: [
+      { file: "3-garden-gpt-image-2.png", model: "gpt-image-2" },
+      { file: "3-garden-gemini.png",       model: "Gemini 3 Pro" },
+    ]
+  },
+];
+
+const container = document.getElementById('pairs');
+
+pairs.forEach(({ prompt, images }, i) => {
+  const shuffled = Math.random() < 0.5 ? images : [...images].reverse();
+
+  const div = document.createElement('div');
+  div.innerHTML = `
+    <p class="prompt">${prompt}</p>
+    <div class="pair">
+      <div class="side">
+        <img src="${shuffled[0].file}">
+        <div class="label" id="label-${i}-0">A</div>
+      </div>
+      <div class="side">
+        <img src="${shuffled[1].file}">
+        <div class="label" id="label-${i}-1">B</div>
+      </div>
+    </div>
+    <button class="reveal-btn" onclick="reveal(${i}, '${shuffled[0].model}', '${shuffled[1].model}', this)">Reveal</button>
+    <hr>
+  `;
+  container.appendChild(div);
+});
+
+function reveal(i, modelA, modelB, btn) {
+  document.getElementById(`label-${i}-0`).textContent = `A — ${modelA}`;
+  document.getElementById(`label-${i}-0`).classList.add('revealed');
+  document.getElementById(`label-${i}-1`).textContent = `B — ${modelB}`;
+  document.getElementById(`label-${i}-1`).classList.add('revealed');
+  btn.disabled = true;
+  btn.textContent = 'Revealed';
+}
+</script>
+</body>
+</html>
