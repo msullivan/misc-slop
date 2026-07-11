@@ -112,6 +112,24 @@ turning(6), white gem G=OPAL (real!), green=glass. Yellow-light blindness + roth
 - T:3140-3150 WATER NYMPH stole my mithril-coat ("You gladly let her take your suit"), wore it, fled —
   chased and one-shot her, got it back + 9 darts + poisoned dart + 2nd engagement ring. Nymphs = kill-on-sight AT RANGE.
 - Mines 7 NW dark warren explored: dart trap + falling-rock trap (3 daggers looted), hobgoblin, gecko, coyote killed.
+- Dlvl 8 (Mines): big cavern rooms. Killed tanky "large dog" (5.0 dogs are BEEFY — Elbereth dance + 6 spear hits),
+  giant bat, 3 elf zombies + rats + yellow light horde at a corridor mouth (blinded again — Elbereth+rest worked).
+  Loot: FOOD RATION, 2 gray stones (kick-tested, stacked = same type = probably flint), towel, orcish pile w/
+  cursed-later gloves + shiny ring + black gem. Falling-rock + pits + water squares ("flounder").
+- Dlvl 9 (Mines): BLINDFOLD found — blindfold+telepathy = full-level monster scan (killer scouting trick!).
+  Killed named orc Akh-ubaneu of Uulai → XL7 (HP 70). Peaceful gnomish wizard casting ambient buffs.
+- **Dlvl 10 = MINE'S END, "Mimic of the Mines" variant** (4 m's on telepathy scan at level edges = gem-pile mimics!).
+  Wiki: 7 hidden places (6 secret doors + 1 choke). REAL luckstone pile = ruby(bottom), red glass(mid), luckstone(top);
+  loadstone pile = glass(bottom), ruby(mid). Mimic piles have diamond/emerald/amethyst + glass + mimic-as-gray-stone.
+  ALL WALLS UNDIGGABLE. Found & looted 2 mimic chambers so far (secret doors ~5-25 searches, locked → kick):
+  small mimic (violet+green+2white gems), large mimic (2violet+green+2white). Mimics = pushovers at a doorway.
+  Killed hostile hobbit slingers (took sling), Uulai the orc chief (SILVER SABER + bag + gems + shiny ring #2!).
+- **GLOVES OF FUMBLING (cursed)** — the "old gloves" from Dlvl 8. Constant trips/flounders, and they BOTCHED
+  Elbereth mid-fight ("Elnereth")!! Nearly died to 3-warg pack: 70→5 HP. PRAYER #4 SAVED ME (Tyr, full heal,
+  ~1300 turns since last). Killed all 3 wargs + homunculus. Pre-IDed full healing potion also burned mid-fight.
+  TODO: remove curse for gloves; NEW RULE 13: curse-test unknown armor before wearing (drop-test or altar).
+- Gem hoard: ~24 gems in Uulai's sack (4 white=diamond?, 2 green=emerald?, 6 violet=amethyst?, blue, reds, etc).
+- Prayer log: T754, T2765, T4095 all successful (heal/cure). Next prayer safe ~T5200+.
 - Learned: `travel.sh` / walking SWAPS places with peacefuls in 5.0 (no need to route around).
 - Climbed out of Mines (T~1900-2150): recrossed orc town clean (captain switched to scimitar, never showed).
   Kitten STILL fighting Lemni's ghost on Mines 2 (~1700 turns!) — both unhittable, left them to it. Spear → Skilled.
