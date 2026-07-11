@@ -100,11 +100,18 @@ turning(6), white gem G=OPAL (real!), green=glass. Yellow-light blindness + roth
   it just ignores minor ones like cursed items.) Leprechaun stole ~$60 total (never melee-race a speed-15 thief).
   Loot: 11 candles (Izchak's looted stock!), 250 gold from orc "treasurer", scimitars.
 - Dlvl 6: more Uulai orcs (10 killed total), imp, iguanas. Land mine (leg wound), pits everywhere. XL5.
-- Dlvl 7 = **MINE'S END** (overview: "Mines levels 3 to 7"). Peaceful gnome KING + lords + gnomes everywhere.
-  Gem haul: 3 yellowish-brown, yellow, red, black, violet (7 total). Curved wand = boring engrave + no zap effect (nothing?).
-  Fog cloud engulfed me → destroyed it → **XL6** (HP 61). Snake + 2 dingoes killed.
-  **LUCKSTONE NOT FOUND**: searched every dead end 15-30×. Wiki says NE chamber, likely needs DIGGING (no pick-axe yet).
-  TODO: return with pick-axe/digging wand for luckstone.
+- Dlvl 7 — ~~MINE'S END~~ **WRONG, it's just Mines 7!** (T:3229 found a `>` downstairs in dark SW area.)
+  The "Mines levels 3 to 7" overview line only lists *visited* levels — rookie mistake, cost ~250 wasted searches.
+  Peaceful gnome KING + lords + gnomes everywhere. Gem haul: 3 yellowish-brown, yellow, red, black, violet (7 total).
+  Curved wand = boring engrave + no zap effect (nothing?). Fog cloud engulfed me → destroyed it → **XL6** (HP 61).
+  USER CLARIFIED: the "on the ground" hint was about BONES loot, not the luckstone. Real Mine's End is deeper
+  (wiki: 8th-9th branch level). Wiki variants: Mimic (gem piles w/ mimic fakes; glass-in-middle = luckstone pile),
+  Wine Cellar (gem cache walled in NE — NEEDS DIGGING, get a pick-axe from a hostile dwarf),
+  Catacombs (maze; luckstone at 1 of 3 fixed spots ON A LEVEL TELEPORTER — stepping on it TPs you up unless
+  magic resistance; can also zap wand of tele at the stone). (Loadstone lookalike: kick-test before pickup.)
+- T:3140-3150 WATER NYMPH stole my mithril-coat ("You gladly let her take your suit"), wore it, fled —
+  chased and one-shot her, got it back + 9 darts + poisoned dart + 2nd engagement ring. Nymphs = kill-on-sight AT RANGE.
+- Mines 7 NW dark warren explored: dart trap + falling-rock trap (3 daggers looted), hobgoblin, gecko, coyote killed.
 - Learned: `travel.sh` / walking SWAPS places with peacefuls in 5.0 (no need to route around).
 - Climbed out of Mines (T~1900-2150): recrossed orc town clean (captain switched to scimitar, never showed).
   Kitten STILL fighting Lemni's ghost on Mines 2 (~1700 turns!) — both unhittable, left them to it. Spear → Skilled.
