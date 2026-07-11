@@ -91,7 +91,30 @@ turning(6), white gem G=OPAL (real!), green=glass. Yellow-light blindness + roth
   pink/sky-blue potions (unid), 2 scrolls (unid), engagement ring (unid), red gem
 - Mines 4: gnome pack ~5 converging in the dark. CAUTION: accidentally hit a PEACEFUL gnome (it "got angry") —
   farlook alignment before attacking in Mines as a dwarf!
-- GOAL: Minetown (1-2 levels down) — altar + shops. Sell gems/hammer, BUC-test, maybe buy AC.
+- Mines 4 (T~650): killed FLOATING EYE with darts at range, ate corpse → **TELEPATHY intrinsic!**
+  Found **ELVEN MITHRIL-COAT** in arrow-trap loot pile (dead adventurer) → **AC 0** at Dlvl 4. Dart traps, sleep-gas trap.
+- Dlvl 5 = **ORC TOWN** (Minetown sacked variant!): named hill orc tribe "of Uulai" everywhere, NO shops/priest,
+  iron bars + boulders sealing the plaza. Killed 5 orcs on the outskirts.
+  **ORC-CAPTAIN with poisoned arrows nearly killed me**: 51→5 HP in 2 volleys, St 18/02→17, Co 18→17, maxHP 51→40.
+  PRAYER SAVED ME: full heal + cured sickness. (Correction to rule 12: prayer DOES fix critical-HP/sickness troubles;
+  it just ignores minor ones like cursed items.) Leprechaun stole ~$60 total (never melee-race a speed-15 thief).
+  Loot: 11 candles (Izchak's looted stock!), 250 gold from orc "treasurer", scimitars.
+- Dlvl 6: more Uulai orcs (10 killed total), imp, iguanas. Land mine (leg wound), pits everywhere. XL5.
+- Dlvl 7 = **MINE'S END** (overview: "Mines levels 3 to 7"). Peaceful gnome KING + lords + gnomes everywhere.
+  Gem haul: 3 yellowish-brown, yellow, red, black, violet (7 total). Curved wand = boring engrave + no zap effect (nothing?).
+  Fog cloud engulfed me → destroyed it → **XL6** (HP 61). Snake + 2 dingoes killed.
+  **LUCKSTONE NOT FOUND**: searched every dead end 15-30×. Wiki says NE chamber, likely needs DIGGING (no pick-axe yet).
+  TODO: return with pick-axe/digging wand for luckstone.
+- Learned: `travel.sh` / walking SWAPS places with peacefuls in 5.0 (no need to route around).
+- Climbed out of Mines (T~1900-2150): recrossed orc town clean (captain switched to scimitar, never showed).
+  Kitten STILL fighting Lemni's ghost on Mines 2 (~1700 turns!) — both unhittable, left them to it. Spear → Skilled.
+  Killed 2nd floating eye with darts on Dungeons 3 (already have telepathy). Statue gallery room on D4 (ooze + zombie statues).
+- Dungeons 4: hidden passage found E of chest room (searched dead-end corridor 25×). Locked door kicked open.
+- Dungeons 5 (T~2555): 2 chests looted (3 scrolls: JUYED AWK YACC, PRIRUTSENIE, + old 2; dark/milky potions).
+  **SKY BLUE = POTION OF HEALING** (quaff-IDed, 6 found — 5 left as emergency stash!). 2nd yellow gem (8 gems total).
+  Fountain room W side. NO FOOD in pack — eating fresh corpses (newt, iguana OK).
+- SOKOBAN: no second `<` found on D2/D3/D4 yet — must be in an unexplored corner; check when passing.
+- GOAL: descend toward Oracle (D5-9), level up, find food + Sokoban. Kill-list: leprechaun (has ~$60 of mine).
 
 ### ADDITIONAL RULES FOR GAME 3
 8. **FOOD > PIETY.** Never sacrifice an edible corpse when Hungry. Eat at "Hungry", never reach Weak.
