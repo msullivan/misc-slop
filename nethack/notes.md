@@ -106,7 +106,8 @@ me mid-prayer. HP 70→5→70(pray)→...→3→0 across ~130 turns of grinding 
 ### LESSONS → RULES FOR GAME 4
 13. **Curse-test armor before wearing** (drop-test on altar, or just don't wear unID'd armor). The -1 gauntlets
     of fumbling caused: constant trips (interrupted travel), a BOTCHED Elbereth ("Elnereth") at HP 22, and
-    weapon-drop risk all game.
+    weapon-drop risk all game. USER TIP: **pets won't step on cursed items** — drop the item and watch whether
+    the pet avoids the square = free curse detection (another reason to keep a pet alive!).
 14. **Elbereth is an escape tool, not a fighting platform.** Melee attacks FROM the square (and monster traffic)
     smudge dust engravings — I burned 3 engravings this way and got surprise-attacked each time it silently died.
     Pattern: engrave → REST ONLY → leave when healed. Verify with `:` every few turns.
@@ -117,12 +118,16 @@ me mid-prayer. HP 70→5→70(pray)→...→3→0 across ~130 turns of grinding 
 17. **Prayer cooldown is real**: ~1000+ turns. T4095 prayer worked (1330 elapsed); T4266 prayer (171 elapsed)
     got me killed mid-animation. Track "next safe prayer" in notes after every prayer.
 18. **Clear every --More-- immediately.** A pending More silently ate ~80 rest keystrokes; I misdiagnosed it as
-    a frozen game, stepped off Elbereth to "test movement", and took free hits. (5.0 also REFUSES `s` search
-    when a hostile is visible-adjacent — rest with `.` instead.)
+    a frozen game, stepped off Elbereth to "test movement", and took free hits. USER CORRECTION: resting (`.`)
+    is ALSO refused while hostiles are visible, same as `s` search — you cannot rest-heal with monsters around,
+    period. With hostiles present the options are: fight, flee, or hold on Elbereth without expecting regen.
 19. Monster packs (3× warg, 4× ape) are the #1 killer of this build: 2+ adjacent attackers out-DPS spear+AC0.
     Fight packs only at true chokepoints (doorways/corridors, ONE exposed side) or ranged-kite them.
 20. Blindfold + telepathy = free full-level monster scan. Do it on EVERY new level arrival (it found the mimics
     = gem chambers, and would have shown the ape den before I camped next to it).
+21. **Domestic animals (large dog, kitten, pony) = recruits, not XP.** Throw food at them to tame. A pet
+    fights alongside you, and won't step on cursed items (walking curse detector). Keep it alive (rule from
+    Game 3's T:250 kitten disaster still stands: never blind-loop attacks near your pet).
 
 ## GAME 3 (finished) — Buttsquid III, dwarven Valkyrie, **St 18/02**
 - T~404: XL3, AC5, HP 42/44, $20, Dlvl:4 of **THE GNOMISH MINES** (branch found on Dlvl:2 this time!)
@@ -155,7 +160,10 @@ me mid-prayer. HP 70→5→70(pray)→...→3→0 across ~130 turns of grinding 
 - T:3140-3150 WATER NYMPH stole my mithril-coat ("You gladly let her take your suit"), wore it, fled —
   chased and one-shot her, got it back + 9 darts + poisoned dart + 2nd engagement ring. Nymphs = kill-on-sight AT RANGE.
 - Mines 7 NW dark warren explored: dart trap + falling-rock trap (3 daggers looted), hobgoblin, gecko, coyote killed.
-- Dlvl 8 (Mines): big cavern rooms. Killed tanky "large dog" (5.0 dogs are BEEFY — Elbereth dance + 6 spear hits),
+- Dlvl 8 (Mines): big cavern rooms. Killed tanky "large dog" (5.0 dogs are BEEFY — Elbereth dance + 6 spear hits)
+  — USER TIP: DON'T kill large dogs if you have any food: **throw food to TAME it** (it's a lost pet, and a
+  large dog is a great early ally + curse-detector per rule 13). That fight should have been a recruitment.
+  Also killed:
   giant bat, 3 elf zombies + rats + yellow light horde at a corridor mouth (blinded again — Elbereth+rest worked).
   Loot: FOOD RATION, 2 gray stones (kick-tested, stacked = same type = probably flint), towel, orcish pile w/
   cursed-later gloves + shiny ring + black gem. Falling-rock + pits + water squares ("flounder").
