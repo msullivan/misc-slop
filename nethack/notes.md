@@ -81,7 +81,50 @@ fought it anyway (grabbed, can't flee) → FAINTED mid-fight → crushed at 0 HP
 Death-ID reveals: emerald=healing, moonstone ring=sustain ability, redwood wand=CANCELLATION(3), balsa=undead
 turning(6), white gem G=OPAL (real!), green=glass. Yellow-light blindness + rothe swarm nearly killed me earlier.
 
-## GAME 3 (current) — Buttsquid III, dwarven Valkyrie, **St 18/02**
+## GAME 3 POST-MORTEM (died T:4266, Dlvl:10 Mine's End, 4954 pts — "killed by an ape, while praying")
+**Best run yet** (G1: 73pts/T259, G2: T2762/Dlvl9, G3: 4954pts/T4266/Dlvl10/XL7/AC0/70maxHP).
+Death spiral: 3-warg pack (burned prayer #4 + full-healing + 2 healing potions) → rested in an EXPOSED corner
+next to unexplored territory → 4-ape troop trickled in → cornered vs 3 attackers, walls N/NE/E → burned last
+4 healing potions → potion gamble = BLINDNESS → prayed 170 turns after last prayer (too soon) → ape finished
+me mid-prayer. HP 70→5→70(pray)→...→3→0 across ~130 turns of grinding attrition.
+
+**Death-screen ID reveals** (write these into item-guessing priors):
+- curved wand = **CANCELLATION (0:5)** — engrave-test shows NOTHING and zapping most monsters shows nothing.
+  "No effect" ≠ junk wand! (Also: cancellation destroys the Catacombs level-teleporters per wiki 3.7 note.)
+- milky potion = **SPEED** (was in pack the whole fight!), dark = **PARALYSIS** (quaffing it = certain death),
+  purple-red ×2 = blindness (the fatal gamble), pink = object detection.
+- scrolls: JUYED AWK YACC ×2 = identify (2 copies of an unID scroll ≈ identify, it's the most common),
+  HAPAX LEGOMENON = create monster (glad I didn't read it mid-fight), EIRIS SAZUN IDISI = REMOVE CURSE
+  (the one scroll-read gamble that PAID — uncursed the fumbling gauntlets mid-apes-fight).
+- rings: engagement = cursed HUNGER (never wore it — good), 2× shiny = cursed -1 increase accuracy,
+  iron = searching (should have worn this all game!).
+- 3 daggers from the falling-rock pile = blessed +2! K-slot daggers were the best throwables I had.
+- cloth spellbook = FIREBALL (uncastable at In:7 — dwarf Valk problem).
+- 2 gray stones = TOUCHSTONES (stack-inference was right: same type; guess of flint wrong).
+- Gem haul (died with): **2 DIAMONDS, emerald, 2 amethysts**, jet/jasper/fluorite/citrine/amber + ~12 glass.
+
+### LESSONS → RULES FOR GAME 4
+13. **Curse-test armor before wearing** (drop-test on altar, or just don't wear unID'd armor). The -1 gauntlets
+    of fumbling caused: constant trips (interrupted travel), a BOTCHED Elbereth ("Elnereth") at HP 22, and
+    weapon-drop risk all game.
+14. **Elbereth is an escape tool, not a fighting platform.** Melee attacks FROM the square (and monster traffic)
+    smudge dust engravings — I burned 3 engravings this way and got surprise-attacked each time it silently died.
+    Pattern: engrave → REST ONLY → leave when healed. Verify with `:` every few turns.
+15. **Retreat has to happen at ~60% HP, not 30%.** Twice I kept fighting/resting in place at ~40/70 next to
+    unexplored dark. The stairs `<` were ~15 squares away the whole time; climbing up = warg/ape packs don't follow.
+16. **Don't quaff unknown potions as emergency heals** — 2/5 of my unknowns were instant-loss (paralysis) or
+    fight-losing (blindness). Unknowns are for safe-time testing; emergencies need KNOWN healing only.
+17. **Prayer cooldown is real**: ~1000+ turns. T4095 prayer worked (1330 elapsed); T4266 prayer (171 elapsed)
+    got me killed mid-animation. Track "next safe prayer" in notes after every prayer.
+18. **Clear every --More-- immediately.** A pending More silently ate ~80 rest keystrokes; I misdiagnosed it as
+    a frozen game, stepped off Elbereth to "test movement", and took free hits. (5.0 also REFUSES `s` search
+    when a hostile is visible-adjacent — rest with `.` instead.)
+19. Monster packs (3× warg, 4× ape) are the #1 killer of this build: 2+ adjacent attackers out-DPS spear+AC0.
+    Fight packs only at true chokepoints (doorways/corridors, ONE exposed side) or ranged-kite them.
+20. Blindfold + telepathy = free full-level monster scan. Do it on EVERY new level arrival (it found the mimics
+    = gem chambers, and would have shown the ape den before I camped next to it).
+
+## GAME 3 (finished) — Buttsquid III, dwarven Valkyrie, **St 18/02**
 - T~404: XL3, AC5, HP 42/44, $20, Dlvl:4 of **THE GNOMISH MINES** (branch found on Dlvl:2 this time!)
 - Route: D1 (fast, T108) → D2 (shop heard, not found; boulder-blocked corridor) → Mines entrance
 - Mines 3: killed jackal"Slasher"(kitten's kill), rat, newts, hobbit (war hammer drop), gnome, gnome lord (4 daggers!)
