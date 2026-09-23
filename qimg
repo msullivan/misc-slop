@@ -1,0 +1,146 @@
+#!/usr/bin/env python3
+"""Generate or edit images with Qwen-Image 2.1 via a local ComfyUI server.
+
+  qimg "a red fox in the snow"
+  qimg "a poster that says HELLO" --size 2048x2048 --steps 40 -o poster.png
+  qimg "make the sky stormy" -i photo.jpg
+  qimg "put the shirt from <image2> on the person in <image1>" -i person.png -i shirt.png
+  qimg "a rubber duck" --transparent -n 4
+"""
+import argparse, json, os, random, subprocess, sys, time, uuid
+import urllib.error, urllib.parse, urllib.request
+
+COMFY_DIR = os.path.expanduser("~/src/ComfyUI")
+UNET = "qwen_image_2.1_bf16.safetensors"
+TEXT_ENCODER = "qwen3vl_8b_bf16.safetensors"
+VAE = "qwen_image_2.1_vae_bf16.safetensors"
+
+
+def call(url, data=None, headers={}):
+    try:
+        return urllib.request.urlopen(urllib.request.Request(url, data, headers)).read()
+    except urllib.error.HTTPError as e:
+        sys.exit(f"{url}: HTTP {e.code}\n{e.read().decode()}")
+
+
+def ensure_server(base):
+    try:
+        urllib.request.urlopen(f"{base}/system_stats", timeout=2)
+        return
+    except OSError:
+        pass
+    log = os.path.join(COMFY_DIR, "server.log")
+    print(f"starting ComfyUI (log: {log})...", file=sys.stderr)
+    subprocess.Popen([os.path.join(COMFY_DIR, "run.sh")], stdout=open(log, "w"),
+                     stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, start_new_session=True)
+    for _ in range(90):
+        time.sleep(1)
+        try:
+            urllib.request.urlopen(f"{base}/system_stats", timeout=2)
+            return
+        except OSError:
+            pass
+    sys.exit(f"ComfyUI did not come up; see {log}")
+
+
+def upload(base, path):
+    boundary = uuid.uuid4().hex
+    name = f"qimg_{uuid.uuid4().hex[:8]}_{os.path.basename(path)}"
+    body = (f'--{boundary}\r\nContent-Disposition: form-data; name="image"; filename="{name}"\r\n'
+            f'Content-Type: application/octet-stream\r\n\r\n').encode() + open(path, "rb").read() + f"\r\n--{boundary}--\r\n".encode()
+    r = json.loads(call(f"{base}/upload/image", body, {"Content-Type": f"multipart/form-data; boundary={boundary}"}))
+    return os.path.join(r.get("subfolder", ""), r["name"])
+
+
+def build(args, images, seed):
+    g = {
+        "unet": {"class_type": "UNETLoader", "inputs": {"unet_name": UNET, "weight_dtype": "default"}},
+        "clip": {"class_type": "CLIPLoader", "inputs": {"clip_name": TEXT_ENCODER, "type": "qwen_image", "device": "default"}},
+        "vae": {"class_type": "VAELoader", "inputs": {"vae_name": VAE}},
+        "encode": {"class_type": "TextEncodeQwenImage21", "inputs": {
+            "clip": ["clip", 0], "vae": ["vae", 0], "prompt": args.prompt,
+            "negative_prompt": args.negative, "resolution": args.ref_resolution}},
+        "sample": {"class_type": "KSampler", "inputs": {
+            "model": ["unet", 0], "positive": ["encode", 0], "negative": ["encode", 1],
+            "seed": seed, "steps": args.steps, "cfg": args.cfg, "sampler_name": args.sampler,
+            "scheduler": args.scheduler, "denoise": 1.0}},
+        "decode": {"class_type": "VAEDecode", "inputs": {"samples": ["sample", 0], "vae": ["vae", 0]}},
+        "save": {"class_type": "SaveImage", "inputs": {"images": ["decode", 0], "filename_prefix": "qimg"}},
+    }
+    for i, name in enumerate(images, 1):
+        g[f"img{i}"] = {"class_type": "LoadImage", "inputs": {"image": name}}
+        g["encode"]["inputs"][f"images.image_{i}"] = [f"img{i}", 0]
+    if images and not args.size:
+        # Edit at the first reference image's size
+        g["sample"]["inputs"]["latent_image"] = ["encode", 2]
+    else:
+        w, h = args.size or (1024, 1024)
+        g["latent"] = {"class_type": "EmptyLatentImage", "inputs": {"width": w, "height": h, "batch_size": 1}}
+        g["sample"]["inputs"]["latent_image"] = ["latent", 0]
+    return g
+
+
+def size(s):
+    w, h = map(int, s.lower().split("x"))
+    if w % 32 or h % 32:
+        raise argparse.ArgumentTypeError("width and height must be multiples of 32")
+    return w, h
+
+
+def main():
+    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("prompt")
+    p.add_argument("-i", "--image", action="append", default=[], help="reference image for editing (repeatable; refer to as <image1>, <image2>, ...)")
+    p.add_argument("-o", "--output", help="output path (default: qimg_<seed>.png in the current directory)")
+    p.add_argument("-s", "--size", type=size, help="WxH, e.g. 2048x2048 (default: 1024x1024, or the first -i image's size)")
+    p.add_argument("--steps", type=int, default=25, help="default 25; the official pipeline uses 40-50")
+    p.add_argument("--seed", type=int)
+    p.add_argument("-n", "--count", type=int, default=1)
+    p.add_argument("--transparent", action="store_true", help="generate an RGBA image with a transparent background")
+    p.add_argument("--negative", default="", help="negative prompt (only has an effect with --cfg > 1)")
+    p.add_argument("--cfg", type=float, default=1.0)
+    p.add_argument("--sampler", default="euler")
+    p.add_argument("--scheduler", default="simple")
+    p.add_argument("--ref-resolution", type=int, default=1024, help="reference images are resized to about this many pixels square")
+    p.add_argument("--server", default="http://127.0.0.1:8188")
+    args = p.parse_args()
+
+    if args.transparent:
+        args.prompt = (f"This is an RGBA format image with transparency. {args.prompt}. "
+                       "The image has an alpha channel and a transparent background.")
+    for path in args.image:
+        if not os.path.exists(path):
+            sys.exit(f"no such file: {path}")
+
+    ensure_server(args.server)
+    images = [upload(args.server, path) for path in args.image]
+
+    for n in range(args.count):
+        seed = args.seed + n if args.seed is not None else random.getrandbits(48)
+        body = json.dumps({"prompt": build(args, images, seed)}).encode()
+        pid = json.loads(call(f"{args.server}/prompt", body, {"Content-Type": "application/json"}))["prompt_id"]
+        start = time.time()
+        while True:
+            entry = json.loads(call(f"{args.server}/history/{pid}")).get(pid)
+            if entry:
+                break
+            print(f"\rgenerating... {time.time() - start:.0f}s", end="", file=sys.stderr)
+            time.sleep(1)
+        print("\r", end="", file=sys.stderr)
+        if entry["status"]["status_str"] != "success":
+            errs = [m[1].get("exception_message", "") for m in entry["status"]["messages"] if m[0] == "execution_error"]
+            sys.exit("generation failed: " + " ".join(errs))
+        img = entry["outputs"]["save"]["images"][0]
+        data = call(f"{args.server}/view?" + urllib.parse.urlencode(img))
+        if args.output and args.count > 1:
+            root, ext = os.path.splitext(args.output)
+            out = f"{root}_{n + 1}{ext}"
+        else:
+            out = args.output or f"qimg_{seed}.png"
+        with open(out, "wb") as f:
+            f.write(data)
+        print(f"{out}  (seed {seed}, {time.time() - start:.0f}s)")
+
+
+if __name__ == "__main__":
+    main()
