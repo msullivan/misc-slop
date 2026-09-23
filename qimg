@@ -10,9 +10,6 @@
 import argparse, json, os, random, sys, time, uuid
 import urllib.error, urllib.parse, urllib.request
 
-UNET = "qwen_image_2.1_bf16.safetensors"
-TEXT_ENCODER = "qwen3vl_8b_bf16.safetensors"
-VAE = "qwen_image_2.1_vae_bf16.safetensors"
 
 
 def call(url, data=None, headers={}):
@@ -22,11 +19,11 @@ def call(url, data=None, headers={}):
         sys.exit(f"{url}: HTTP {e.code}\n{e.read().decode()}")
 
 
-def ensure_server(base):
-    try:
-        urllib.request.urlopen(f"{base}/system_stats", timeout=2)
-    except OSError as e:
-        sys.exit(f"ComfyUI not reachable at {base} ({e}); start it with ~/src/ComfyUI/run.sh")
+def pick_model(base, folder, substr):
+    names = [n for n in json.loads(call(f"{base}/models/{folder}")) if substr in n]
+    if not names:
+        sys.exit(f"no model matching '{substr}' in {folder}/")
+    return names[0]
 
 
 def upload(base, path):
@@ -38,11 +35,11 @@ def upload(base, path):
     return os.path.join(r.get("subfolder", ""), r["name"])
 
 
-def build(args, images, seed):
+def build(args, models, images, seed):
     g = {
-        "unet": {"class_type": "UNETLoader", "inputs": {"unet_name": UNET, "weight_dtype": "default"}},
-        "clip": {"class_type": "CLIPLoader", "inputs": {"clip_name": TEXT_ENCODER, "type": "qwen_image", "device": "default"}},
-        "vae": {"class_type": "VAELoader", "inputs": {"vae_name": VAE}},
+        "unet": {"class_type": "UNETLoader", "inputs": {"unet_name": models["unet"], "weight_dtype": "default"}},
+        "clip": {"class_type": "CLIPLoader", "inputs": {"clip_name": models["clip"], "type": "qwen_image", "device": "default"}},
+        "vae": {"class_type": "VAELoader", "inputs": {"vae_name": models["vae"]}},
         "encode": {"class_type": "TextEncodeQwenImage21", "inputs": {
             "clip": ["clip", 0], "vae": ["vae", 0], "prompt": args.prompt,
             "negative_prompt": args.negative, "resolution": args.ref_resolution}},
@@ -89,6 +86,9 @@ def main():
     p.add_argument("--scheduler", default="simple")
     p.add_argument("--ref-resolution", type=int, default=1024, help="reference images are resized to about this many pixels square")
     p.add_argument("--server", default="http://127.0.0.1:8188")
+    p.add_argument("--unet", help="diffusion model filename (default: first match for qwen_image_2.1)")
+    p.add_argument("--clip", help="text encoder filename (default: first match for qwen3vl)")
+    p.add_argument("--vae", help="VAE filename (default: first match for qwen_image_2.1_vae)")
     args = p.parse_args()
 
     if args.transparent:
@@ -98,12 +98,20 @@ def main():
         if not os.path.exists(path):
             sys.exit(f"no such file: {path}")
 
-    ensure_server(args.server)
+    try:
+        urllib.request.urlopen(f"{args.server}/system_stats", timeout=2)
+    except OSError as e:
+        sys.exit(f"ComfyUI not reachable at {args.server}: {e}")
+    models = {
+        "unet": args.unet or pick_model(args.server, "diffusion_models", "qwen_image_2.1"),
+        "clip": args.clip or pick_model(args.server, "text_encoders", "qwen3vl"),
+        "vae": args.vae or pick_model(args.server, "vae", "qwen_image_2.1_vae"),
+    }
     images = [upload(args.server, path) for path in args.image]
 
     for n in range(args.count):
         seed = args.seed + n if args.seed is not None else random.getrandbits(48)
-        body = json.dumps({"prompt": build(args, images, seed)}).encode()
+        body = json.dumps({"prompt": build(args, models, images, seed)}).encode()
         pid = json.loads(call(f"{args.server}/prompt", body, {"Content-Type": "application/json"}))["prompt_id"]
         start = time.time()
         while True:
