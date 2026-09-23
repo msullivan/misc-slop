@@ -7,10 +7,9 @@
   qimg "put the shirt from <image2> on the person in <image1>" -i person.png -i shirt.png
   qimg "a rubber duck" --transparent -n 4
 """
-import argparse, json, os, random, subprocess, sys, time, uuid
+import argparse, json, os, random, sys, time, uuid
 import urllib.error, urllib.parse, urllib.request
 
-COMFY_DIR = os.path.expanduser("~/src/ComfyUI")
 UNET = "qwen_image_2.1_bf16.safetensors"
 TEXT_ENCODER = "qwen3vl_8b_bf16.safetensors"
 VAE = "qwen_image_2.1_vae_bf16.safetensors"
@@ -26,21 +25,8 @@ def call(url, data=None, headers={}):
 def ensure_server(base):
     try:
         urllib.request.urlopen(f"{base}/system_stats", timeout=2)
-        return
-    except OSError:
-        pass
-    log = os.path.join(COMFY_DIR, "server.log")
-    print(f"starting ComfyUI (log: {log})...", file=sys.stderr)
-    subprocess.Popen([os.path.join(COMFY_DIR, "run.sh")], stdout=open(log, "w"),
-                     stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, start_new_session=True)
-    for _ in range(90):
-        time.sleep(1)
-        try:
-            urllib.request.urlopen(f"{base}/system_stats", timeout=2)
-            return
-        except OSError:
-            pass
-    sys.exit(f"ComfyUI did not come up; see {log}")
+    except OSError as e:
+        sys.exit(f"ComfyUI not reachable at {base} ({e}); start it with ~/src/ComfyUI/run.sh")
 
 
 def upload(base, path):
