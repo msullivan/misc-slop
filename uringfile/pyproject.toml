@@ -1,0 +1,43 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "uringfile"
+version = "0.1.0"
+description = "Asynchronous file I/O on io_uring with anyio's file API, in pure Python"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["anyio>=4.14"]
+classifiers = [
+    "Framework :: AnyIO",
+    "Framework :: AsyncIO",
+    "Framework :: Trio",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Typing :: Typed",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8", "trio>=0.26", "uvloop>=0.21"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/uringfile"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = ["error"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+# Finalizers and teardown paths swallow errors deliberately: there is nobody
+# to report them to, and the rest of the cleanup still has to happen.
+ignore = ["BLE001", "S110"]
+
+[tool.ruff.lint.per-file-ignores]
+# The tests and the benchmark use blocking files on purpose (they are the
+# reference being compared against) and poke at half-finished states.
+"tests/*" = ["ASYNC115", "ASYNC220", "ASYNC230", "B018", "C408", "PT031", "RUF059", "SIM115", "SIM117", "UP031"]
+"bench/*" = ["ASYNC230", "SIM115"]
