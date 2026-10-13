@@ -27,6 +27,7 @@ than an ordinary cancellation), its buffer is dropped rather than recycled.
 
 from __future__ import annotations
 
+import asyncio
 import codecs
 import errno
 import io
@@ -39,7 +40,7 @@ from typing import Any
 
 from anyio import CancelScope
 
-from ._driver import MAX_RW, current_driver
+from ._driver import MAX_RW, cancel_pending, current_driver
 from ._uring import stat_cached
 
 DEFAULT_BUFFER_SIZE = io.DEFAULT_BUFFER_SIZE
@@ -638,6 +639,12 @@ class Buffered:
             self._rewind()
         if self._wbuf and len(self._wbuf) + n > self._size:
             await self.flush()
+            if cancel_pending():
+                # The flush finished after asyncio had cancelled us, and the
+                # cancellation was put off to our next await. Take it here,
+                # before anything is taken: had the caller's task ended
+                # first, it would be reported cancelled.
+                await asyncio.sleep(0)
 
     def _append(self, data: Any) -> None:
         self._wbuf += data

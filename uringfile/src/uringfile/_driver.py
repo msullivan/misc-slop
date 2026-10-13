@@ -355,16 +355,26 @@ class Driver:
         keep: object = None,
         late: Callable[[int], object] | None = None,
         sqe_flags: int = 0,
+        rearm: bool = False,
     ) -> int:
         """Perform one operation and return its raw result (negative errno on error).
 
         Cancellation is passed on to the kernel, and this then waits for the
         kernel's verdict before re-raising, so that no operation is ever
         left running against a buffer the caller thinks it has back.
-        If the operation finished anyway, ``late`` is called with its result
-        first: the caller lost the race to cancel and gets one chance to
-        account for what happened (keep the bytes that were read, close the
-        descriptor that was opened) before the cancellation propagates.
+        If the operation finished anyway, we lost the race to cancel, and
+        if the cancellation will be raised again at the next checkpoint
+        (see :func:`_redelivered`) the result is simply returned. If not,
+        ``late`` is called with it before the cancellation propagates: the
+        caller's one chance to account for what happened (keep the bytes
+        that were read, close the descriptor that was opened).
+
+        ``rearm`` is for operations whose result matters less than knowing
+        they happened, writes: there asyncio's own cancellation is
+        swallowed too, and put back for the task's next await (see
+        :func:`_rearm`). If the task ends first, asyncio drops the result
+        and reports it cancelled; for a write that loses only the count,
+        which raising would have lost as well.
         """
         await checkpoint_if_cancelled()
         cancelled = get_cancelled_exc_class()
@@ -386,7 +396,9 @@ class Driver:
                         await cancel_shielded_checkpoint()
                     finally:
                         self._yielded = monotonic()
-            except cancelled:
+            except cancelled as exc:
+                redelivered = _redelivered(exc)
+                native = None if redelivered else exc
                 if not op.done:
                     self._cancel(op)
                     # Now wait for the kernel's verdict, however long that
@@ -399,17 +411,27 @@ class Driver:
                         try:
                             with CancelScope(shield=True):
                                 await self._wait(op)
-                        except cancelled:
-                            pass
+                        except cancelled as again:
+                            if not _redelivered(again):
+                                redelivered, native = False, again
                 # (Reached with the operation already complete when asyncio
                 # cancels us during the yield above.)
-                if late is not None and op.res >= 0:
-                    late(op.res)
+                if op.res >= 0:
+                    if redelivered:
+                        # We lost the race to cancel: it happened. Report it
+                        # as such. The cancellation is not lost by this; it
+                        # is raised again at the caller's next checkpoint.
+                        return op.res
+                    if rearm and _rearm(native):
+                        return op.res
+                    if late is not None:
+                        late(op.res)
                 raise
             return op.res
         finally:
-            # A traceback keeps this frame alive; don't let it pin the buffer.
-            keep = None
+            # A traceback keeps this frame alive; don't let it pin the buffer,
+            # nor hold the traceback itself in a cycle that would.
+            keep = native = None
 
     # -- typed operations ---------------------------------------------
 
@@ -478,7 +500,9 @@ class Driver:
             return 0
         try:
             while True:
-                res = await self.run(_uring.OP_WRITE, fd, offset, addr, length, 0, keep, late)
+                res = await self.run(
+                    _uring.OP_WRITE, fd, offset, addr, length, 0, keep, late, rearm=True
+                )
                 if res != _EINTR:  # as PEP 475 does for the plain syscalls
                     break
         finally:
@@ -494,6 +518,54 @@ class Driver:
             _check(await self.run(_uring.OP_FTRUNCATE, fd, length))
         else:  # kernels before 6.9
             await to_thread.run_sync(os.ftruncate, fd, length)
+
+
+def _redelivered(exc: BaseException) -> bool:
+    """Whether the cancellation ``exc`` will be raised again at the next
+    checkpoint if it is swallowed now.
+
+    Trio's always is. On asyncio, anyio's cancel scopes keep cancelling the
+    task for as long as it is inside one, but asyncio's own cancellation
+    (Task.cancel, asyncio.timeout) is delivered once, and swallowing it
+    loses it for good.
+    """
+    if not isinstance(exc, asyncio.CancelledError):
+        return True
+    try:
+        from anyio._backends._asyncio import is_anyio_cancellation
+    except ImportError:  # moved: be conservative
+        return False
+    return is_anyio_cancellation(exc)
+
+
+def _rearm(exc: BaseException | None) -> bool:
+    """Swallow asyncio's cancellation ``exc`` by putting it back, so that
+    the task's next await raises it. Return whether that was done.
+
+    Only from Python 3.13. Whoever cancelled may withdraw the request with
+    ``uncancel()``: asyncio.timeout does, when the block it guards finishes
+    without raising, as it now will. Before 3.13 that took the request off
+    the count but left it pending, so the task would be cancelled, later
+    on and by nobody.
+    """
+    if sys.version_info < (3, 13) or not isinstance(exc, asyncio.CancelledError):
+        return False
+    task = asyncio.current_task()
+    if task is None:
+        return False
+    task.uncancel()  # we were cancelled once already; keep the count
+    task.cancel(exc.args[0] if exc.args else None)
+    return True
+
+
+def cancel_pending() -> bool:
+    """Whether the current task is due to be cancelled at its next await
+    (asyncio only: elsewhere a pending cancellation is not kept this way)."""
+    try:
+        task = asyncio.current_task()
+    except RuntimeError:  # no asyncio loop running
+        return False
+    return task is not None and getattr(task, "_must_cancel", False)
 
 
 def _check(res: int) -> int:

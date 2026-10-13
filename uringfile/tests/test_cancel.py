@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import fcntl
 import os
+import sys
 import time
 
 import anyio
@@ -175,40 +176,46 @@ async def test_late_unbuffered_read_is_kept(fifo, uncancellable):
         async with anyio.create_task_group() as tg:
             tg.start_soon(later, 0.1, os.write, w, b"late")
             with anyio.move_on_after(0.02) as scope:
-                await f.read(10)
-            # Reported as cancelled, and only once the kernel had answered.
+                # The kernel answered after all: that is the result, and
+                # only once it had answered.
+                assert await f.read(10) == b"late"
+                assert not current_driver()._inflight
+                # The cancellation itself is not lost, just put off.
+                await anyio.sleep(1)
+                pytest.fail("not cancelled")
             assert scope.cancelled_caught
-            assert not current_driver()._inflight
         os.write(w, b"r")
-        assert await f.read(3) == b"lat"
-        buf = bytearray(10)
-        assert await f.readinto(buf) == 1 and buf[:1] == b"e"
         assert await f.read(10) == b"r"
 
 
 @pytest.mark.parametrize(
-    "call, expected",
+    "call, first, second",
     [
-        (lambda f: f.read(3), b"lat"),  # via the buffer
-        (lambda f: f.read(10_000), b"late!"),  # straight into the result
-        (lambda f: f.read1(10_000), b"late"),
-        (lambda f: f.readline(), b"late!"),
-        (lambda f: f.readinto(bytearray(10_000)), 5),
-        (lambda f: f.peek(), b"late"),
-        (lambda f: f.read(), b"late!"),
+        # Done in one read: those return what it got.
+        (lambda f: f.read(3), b"lat", b"e!"),
+        (lambda f: f.read1(10_000), b"late", b"!"),
+        (lambda f: f.peek(), b"late", b"late"),
+        # Wanting more, they go back for it, and are cancelled there.
+        (lambda f: f.read(10_000), None, b"late!"),
+        (lambda f: f.readline(), None, b"late!"),
+        (lambda f: f.readinto(bytearray(10_000)), None, 5),
+        (lambda f: f.read(), None, b"late!"),
     ],
 )
-async def test_late_buffered_read_is_kept(fifo, uncancellable, call, expected):
+async def test_late_buffered_read_is_kept(fifo, uncancellable, call, first, second):
     r, w = fifo
     async with await open_file(r, "rb", closefd=False) as f:
         async with anyio.create_task_group() as tg:
             tg.start_soon(later, 0.1, os.write, w, b"late")
+            got = None
             with anyio.move_on_after(0.02) as scope:
-                await call(f)
-            assert scope.cancelled_caught
+                got = await call(f)
+            assert scope.cancel_called
+            assert got == first
+            assert scope.cancelled_caught == (first is None)
         os.write(w, b"!")
         os.close(w)
-        assert await call(f) == expected
+        assert await call(f) == second
 
 
 async def test_late_text_read_is_kept(fifo, uncancellable):
@@ -217,10 +224,9 @@ async def test_late_text_read_is_kept(fifo, uncancellable):
         async with anyio.create_task_group() as tg:
             tg.start_soon(later, 0.1, os.write, w, "é\nà".encode())
             with anyio.move_on_after(0.02) as scope:
-                await f.readline()
-            assert scope.cancelled_caught
+                assert await f.readline() == "é\n"
+            assert scope.cancel_called and not scope.cancelled_caught
         os.close(w)
-        assert await f.readline() == "é\n"
         assert await f.read() == "à"
 
 
@@ -284,6 +290,18 @@ async def test_late_write_is_not_repeated(full_pipe, uncancellable):
             tg.start_soon(reader)
             await f.flush()
     assert b"".join(got) == filler + payload
+
+
+async def test_late_unbuffered_write_reports_its_count(full_pipe, uncancellable):
+    r, w, filler = full_pipe
+    async with await open_file(w, "wb", buffering=0, closefd=False) as f:
+        async with anyio.create_task_group() as tg:
+            tg.start_soon(later, 0.1, drain, r, len(filler))
+            with anyio.move_on_after(0.02) as scope:
+                n = await f.write(b"W" * 100)
+            assert scope.cancel_called and not scope.cancelled_caught
+        assert n == 100
+        assert read_available(r) == b"W" * 100
 
 
 async def test_cancelled_text_write(full_pipe):
@@ -381,8 +399,11 @@ async def test_late_open_does_not_leak_the_descriptor(tmp_path, uncancellable, c
         # The open is cancelled first and completes afterwards.
         tg.start_soon(later, 0.1, writer_comes_and_goes)
         with anyio.move_on_after(0.02) as scope:
-            await open_file(p, "rb")
-        assert scope.cancelled_caught
+            # Whether this is cancelled, or completes after all, depends on
+            # which of its steps the kernel was in.
+            f = await open_file(p, "rb")
+            await f.aclose()
+        assert scope.cancel_called
     assert count_fds() == before
 
 
@@ -629,6 +650,63 @@ async def test_native_cancel_during_flush(full_pipe, uncancellable):
             assert await native_cancel(f.flush(), times=2) == "cancelled"
         await f.flush()
         assert read_available(r) == b"hello"  # once
+
+
+needs_rearm = pytest.mark.skipif(
+    sys.version_info < (3, 13), reason="asyncio cancellation is only put back from 3.13"
+)
+
+
+@asyncio_only
+@needs_rearm
+async def test_native_cancel_of_a_late_unbuffered_write(full_pipe, uncancellable):
+    """asyncio's cancellation, unlike anyio's, is not raised again by itself.
+    A write that went through anyway still reports its count, and the
+    cancellation is put back for the next await."""
+    r, w, filler = full_pipe
+    got = []
+    async with await open_file(w, "wb", buffering=0, closefd=False) as f:
+
+        async def writer():
+            got.append(await f.write(b"W" * 100))
+            await asyncio.sleep(1)
+            got.append("not cancelled")
+
+        async with anyio.create_task_group() as tg:
+            tg.start_soon(later, 0.15, drain, r, len(filler))
+            assert await native_cancel(writer(), times=2) == "cancelled"
+    assert got == [100]
+    assert read_available(r) == b"W" * 100
+
+
+@asyncio_only
+@needs_rearm
+async def test_timeout_around_a_late_write(full_pipe, uncancellable):
+    """The timeout's block finished; it takes its cancellation back, and
+    nothing is left over to cancel the task later."""
+    r, w, filler = full_pipe
+    async with await open_file(w, "wb", buffering=0, closefd=False) as f:
+        async with anyio.create_task_group() as tg:
+            tg.start_soon(later, 0.1, drain, r, len(filler))
+            async with asyncio.timeout(0.02):
+                n = await f.write(b"T" * 100)
+        assert n == 100
+        await asyncio.sleep(0.01)  # not cancelled
+        assert asyncio.current_task().cancelling() == 0
+    assert read_available(r) == b"T" * 100
+
+
+@asyncio_only
+async def test_native_cancel_of_a_small_write_whose_flush_was_late(full_pipe, uncancellable):
+    """The flush that makes room goes through; the write is still not taken."""
+    r, w, filler = full_pipe
+    async with await open_file(w, "wb", buffering=16, closefd=False) as f:
+        await f.write(b"A" * 10)
+        async with anyio.create_task_group() as tg:
+            tg.start_soon(later, 0.15, drain, r, len(filler))
+            assert await native_cancel(f.write(b"B" * 10), times=2) == "cancelled"
+        await f.flush()
+        assert read_available(r) == b"A" * 10
 
 
 @asyncio_only

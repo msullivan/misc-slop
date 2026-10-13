@@ -124,20 +124,41 @@ about a microsecond per line and still lets other tasks run.
 Cancelling a task cancels its operation in the kernel (`IORING_OP_ASYNC_CANCEL`),
 so reads from pipes and FIFO opens are cancellable where a worker thread
 would be stuck. The task then waits for the kernel's verdict before raising,
-because the kernel may be writing into the buffer until then. If the
-operation turned out to have completed anyway, its effect is kept and the
-cancellation is still raised:
+because the kernel may be writing into the buffer until then.
+
+If the operation turned out to have completed anyway, the cancel lost the
+race, and the call returns its result as if it had not been cancelled. The
+cancellation is not lost: it is raised at the task's next checkpoint (on
+Trio, and on asyncio from an anyio cancel scope, cancellation stays in force
+until the scope is left). A call that needs more than one operation, such as
+`readline()` going back for more, therefore usually is cancelled, at its next
+step. When it is, nothing done so far is lost:
 
 - bytes that were read stay in the file object for the next read;
 - bytes that were written are dropped from the write buffer, not written twice;
 - a file that was opened is closed again.
 
+asyncio's own cancellation (`Task.cancel()`, `asyncio.timeout`, `wait_for`)
+is delivered only once, so swallowing it would lose it. For a completed
+write, on Python 3.13 and later, it is put back instead (the task is
+cancelled again, to be raised at its next await) and the write returns its
+count. If the task ends before awaiting anything, asyncio discards the count
+and reports the task cancelled; the data was still written, exactly once. A
+small buffered write is the exception: if the flush that made room for it
+completed, it raises there, before taking anything. Reads are not treated
+this way, since a discarded return value would be lost data. They, and
+writes before 3.13, raise the cancellation, with the effect kept as above.
+
 Consequences worth knowing:
 
 - A task whose operation the kernel cannot cancel (a write to disk in
   progress, say) is not cancelled until that operation finishes.
-- An *unbuffered* write that completed during cancellation raises the
-  cancellation even though the data was written; the count is lost.
+- `cancel_scope.cancelled_caught` is false if the cancelled operation
+  completed and nothing after it in the scope checkpointed. Use
+  `cancel_called` to ask whether the deadline passed.
+- Before Python 3.13, under asyncio's own cancellation, an *unbuffered* write
+  that completed anyway raises the cancellation even though the data was
+  written; the count is lost.
 - A cancelled buffered `write()` of less than the buffer size takes nothing.
   A larger one may have been accepted into the buffer.
 - `aclose()` in a cancelled scope still flushes a regular file (shielded),
