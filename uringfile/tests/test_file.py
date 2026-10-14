@@ -673,3 +673,64 @@ def test_event_loops_in_several_threads(tmp_path, anyio_backend):
 
 def test_available():
     assert uringfile.available() is True
+
+
+@pytest.mark.parametrize("encoding", ["utf-8", "utf-16", "iso2022_jp", "utf-7"])
+@pytest.mark.parametrize("newline", [None, ""])
+async def test_reading_lines_keeps_only_what_tell_needs(path, monkeypatch, encoding, newline):
+    """Lines that end anywhere but at a chunk's end: what was handed out is
+    let go of all the same, and every position can still be returned to."""
+    from uringfile._io import Text
+
+    monkeypatch.setattr(Text, "_CHUNK", 7)  # every line straddles chunks
+    lines = [f"{i} 日本 {'x' * (i % 11)}\r\n" for i in range(300)]
+    with open(path, "w", encoding=encoding, newline="") as g:
+        g.write("".join(lines))
+    with open(path, encoding=encoding, newline=newline) as g:
+        expected = list(g)
+    async with await open_file(path, encoding=encoding, newline=newline) as f:
+        cookies, got, held = [], [], 0
+        for _ in expected:
+            cookies.append(await f.tell())
+            got.append(await f.readline())
+            impl = f._impl
+            held = max(held, len(impl._decoded), len(impl._snapshot[1]))
+        assert got == expected
+        assert held < 150  # a line and a chunk or so, not the file
+        for cookie, line in reversed(list(zip(cookies, got))):
+            await f.seek(cookie)
+            assert await f.readline() == line
+
+
+@pytest.mark.parametrize("encoding", ["utf-8", "utf-16", "iso2022_jp"])
+@pytest.mark.parametrize("call", ["readline", "read"])
+async def test_interrupted_text_read_is_undone(path, monkeypatch, encoding, call):
+    """A text read that has gone through several chunks and is then
+    interrupted leaves the file where it was, tell() included."""
+    from uringfile._io import Text
+
+    monkeypatch.setattr(Text, "_CHUNK", 5)
+    lines = ["short\n", "日本語 that spans many chunks " * 20 + "\n", "after\n"]
+    with open(path, "w", encoding=encoding) as g:
+        g.write("".join(lines))
+    async with await open_file(path, encoding=encoding) as f:
+        assert await f.readline() == lines[0]
+        before = await f.tell()
+        buffer = f._impl.buffer
+        real, calls = buffer.read1, 0
+
+        async def read1(n):
+            nonlocal calls
+            calls += 1
+            if calls == 2:  # after one chunk of the line has been taken
+                raise KeyboardInterrupt
+            return await real(min(n, 8))  # (read(n) asks for all it needs)
+
+        monkeypatch.setattr(buffer, "read1", read1)
+        with pytest.raises(KeyboardInterrupt):
+            await (f.readline() if call == "readline" else f.read(len(lines[1])))
+        assert calls == 2
+        monkeypatch.setattr(buffer, "read1", real)
+        assert await f.tell() == before
+        assert await f.readline() == lines[1]
+        assert await f.read() == lines[2]

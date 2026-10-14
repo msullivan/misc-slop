@@ -875,37 +875,75 @@ class Text:
         self._dpos = 0
         self._snapshot = None
 
-    async def _read_chunk(self, size_hint: int = 0) -> bool:
-        """Decode one more chunk onto the end of ``_decoded``.
+    def _take_decoded(self, n: int = -1) -> str:
+        """Hand out up to ``n`` (or all) of the decoded characters not yet
+        handed out."""
+        pos = self._dpos
+        text = self._decoded[pos:] if n < 0 else self._decoded[pos : pos + n]
+        self._dpos = pos + len(text)
+        return text
+
+    def _rewind_decoded(self, n: int) -> None:
+        """Take back the last ``n`` characters handed out, which must have
+        come from the current chunk."""
+        assert n <= self._dpos
+        self._dpos -= n
+
+    async def _read_chunk(self, size_hint: int, consumed: list[bytes]) -> bool:
+        """Read and decode one more chunk, replacing ``_decoded``: whatever of
+        it was not handed out must have been taken by the caller (with
+        :meth:`_take_decoded`) first.
+
+        CANCEL: the raw bytes are also added to ``consumed``, for :meth:`_undo`.
 
         Returns False once the file is exhausted and nothing more came out.
         """
         decoder = self._decoder
-        fresh = self._dpos >= len(self._decoded)
-        if fresh and self._telling:
+        if self._telling:
             # The decoder may hold undecoded bytes; a clean restart point lies
             # that many bytes back, with the decoder in state (b"", flags).
             pending, flags = decoder.getstate()
         chunk = await self.buffer.read1(max(self._CHUNK, size_hint))
+        consumed.append(chunk)  # CANCEL: so that _undo can give them back
         eof = not chunk
         decoded = decoder.decode(chunk, eof)
-        if fresh:
-            self._decoded = decoded
-            self._dpos = 0
-            if self._telling:
-                self._snapshot = (flags, pending + chunk)
-        else:
-            self._decoded += decoded
-            if self._snapshot is not None:
-                flags, sofar = self._snapshot
-                self._snapshot = (flags, sofar + chunk)
-        if self._telling and self._snapshot is not None and self._decoded:
-            self._b2cratio = len(self._snapshot[1]) / len(self._decoded)
+        self._decoded = decoded
+        self._dpos = 0
+        self._b2cratio = len(chunk) / len(decoded) if decoded else 0.0
+        if self._telling:
+            self._snapshot = (flags, pending + chunk)
         # Reaching EOF can itself produce text (a held-back "\r", or the
         # decoder's verdict on a truncated sequence). That is not EOF yet.
         return not eof or bool(decoded)
 
     # -- reading ------------------------------------------------------
+    #
+    # read(n) and readline() are CPython's: the text gathered so far is kept
+    # in a local, and each chunk read replaces the decoder's output and the
+    # tell() snapshot outright, so that neither ever holds more than one
+    # chunk. What CPython does not have to deal with is a call abandoned
+    # half way with that local in hand. Here the call is undone instead: the
+    # decoder and what it had decoded are put back as they were, and the
+    # bytes read meanwhile go back into the buffer, to be read again.
+    #
+    # Everything that exists only for that is marked CANCEL. Take those
+    # parts out and what is left is CPython's algorithm.
+
+    # CANCEL: the two methods below.
+
+    def _undo_point(self, dpos: int) -> tuple[Any, ...]:
+        """The state to go back to: as it is now, but with ``dpos`` where
+        the call found it, before taking what was already decoded."""
+        return (
+            self._decoded, dpos, self._snapshot, self._b2cratio, self._decoder.getstate()
+        )  # fmt: skip
+
+    def _undo(self, point: tuple[Any, ...] | None, consumed: list[bytes]) -> None:
+        if point is None:  # nothing read yet: nothing to undo
+            return
+        self._decoded, self._dpos, self._snapshot, self._b2cratio, state = point
+        self._decoder.setstate(state)
+        self.buffer._pushback(b"".join(consumed))
 
     def _check_readable(self) -> Any:
         if not self.buffer.readable():  # raises if closed
@@ -916,17 +954,29 @@ class Text:
         decoder = self._check_readable()
         if size is None or size < 0:
             data = await self.buffer.read()
-            result = self._decoded[self._dpos :] + decoder.decode(data, True)
+            result = self._take_decoded() + decoder.decode(data, True)
             self._forget_decoded()
             return result
-        while (missing := size - (len(self._decoded) - self._dpos)) > 0:
+        dpos = self._dpos  # CANCEL
+        result = self._take_decoded(size)
+        if len(result) == size:
+            return result
+        point = self._undo_point(dpos)  # CANCEL
+        consumed: list[bytes] = []  # CANCEL
+        parts = [result]
+        missing = size - len(result)
+        try:  # CANCEL {
             # Characters wanted, scaled to bytes by the ratio seen so far.
-            if not await self._read_chunk(int(max(self._b2cratio, 1.0) * missing)):
-                break
-        pos = self._dpos
-        result = self._decoded[pos : pos + size]
-        self._dpos = pos + len(result)
-        return result
+            while missing and await self._read_chunk(
+                int(max(self._b2cratio, 1.0) * missing), consumed
+            ):
+                parts.append(part := self._take_decoded(missing))
+                missing -= len(part)
+        except BaseException as exc:
+            if not isinstance(exc, Exception):  # cancelled, or interrupted
+                self._undo(point, consumed)
+            raise  # CANCEL }
+        return "".join(parts)
 
     def _find_line_end(self, text: str, start: int, scan: int) -> tuple[int, int]:
         """Look for a line ending in ``text`` at or after ``scan``.
@@ -960,41 +1010,52 @@ class Text:
     async def readline(self, size: int | None = -1) -> str:
         self._check_readable()
         limit = -1 if size is None else size
-        start = scan = self._dpos
+        dpos = self._dpos  # CANCEL
+        point = None  # CANCEL: made when there is first something to undo
+        consumed: list[bytes] = []  # CANCEL
+        line = self._take_decoded()
+        scan = 0
         grow = self._CHUNK
         # Like the C implementation, look at one chunk even for readline(0)
         # on a fresh file; tell() can see the difference.
-        need_more = start >= len(self._decoded)
+        need_more = not line
         hit_eof = False
-        while True:
-            if need_more:
-                scanned = scan - start
-                more = await self._read_chunk(grow)
-                start = self._dpos
-                scan = start + scanned
-                if not more:
-                    end = len(self._decoded)
-                    hit_eof = True
+        try:  # CANCEL {
+            while True:
+                if need_more:
+                    if point is None:  # CANCEL
+                        point = self._undo_point(dpos)  # CANCEL
+                    more = await self._read_chunk(grow, consumed)
+                    if not more:
+                        end = len(line)
+                        hit_eof = True
+                        break
+                    if line:
+                        # A long line: ask for geometrically more, so that
+                        # total work stays linear in the length of the line.
+                        grow *= 2
+                    line += self._take_decoded()
+                end, scan = self._find_line_end(line, 0, scan)
+                if end >= 0:
                     break
-                if scanned:
-                    # A long line: ask for geometrically more, so that total
-                    # work stays linear in the length of the line.
-                    grow *= 2
-            text = self._decoded
-            end, scan = self._find_line_end(text, start, scan)
-            if end >= 0:
-                break
-            if 0 <= limit <= len(text) - start:
-                end = start + limit
-                break
-            need_more = True
-        if 0 <= limit < end - start:
-            end = start + limit
-        line = self._decoded[start:end]
-        self._dpos = end
+                if 0 <= limit <= len(line):
+                    end = limit
+                    break
+                need_more = True
+        except BaseException as exc:
+            if not isinstance(exc, Exception):  # cancelled, or interrupted
+                self._undo(point, consumed)
+            raise  # CANCEL }
+        if 0 <= limit < end:
+            end = limit
         if hit_eof:
             self._forget_decoded()
-        return line
+        else:
+            # Give back what follows the line. (The line did not end, nor
+            # reach the limit, before the last chunk; so all of that is
+            # from the last chunk.)
+            self._rewind_decoded(len(line) - end)
+        return line[:end]
 
     # -- writing ------------------------------------------------------
 
