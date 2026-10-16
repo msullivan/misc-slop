@@ -21,6 +21,7 @@ import ctypes
 import errno
 import mmap
 import os
+import socket
 import struct
 import sys
 from collections.abc import Callable
@@ -29,7 +30,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from _typeshed import ReadableBuffer
 
-__all__ = ["Ring", "readable_address", "stat_cached", "writable_address"]
+__all__ = ["Ring", "readable_address", "receive_buffer_size", "stat_cached", "writable_address"]
 
 # Syscall numbers. io_uring arrived after the kernel unified new syscall
 # numbers across architectures, so these hold everywhere except alpha.
@@ -157,6 +158,25 @@ def stat_cached(fd: int) -> tuple[int, int, int]:
     mode = struct.unpack_from("=H", buf, 28)[0]
     size = struct.unpack_from("=Q", buf, 40)[0]
     return mode, size, blksize
+
+
+# int getsockopt(int fd, int level, int optname, void *optval, socklen_t *optlen)
+_getsockopt = ctypes.CFUNCTYPE(
+    ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, _c_void_p, _c_void_p,
+    use_errno=True,
+)(("getsockopt", _libc))  # fmt: skip
+
+
+def receive_buffer_size(fd: int) -> int:
+    """``SO_RCVBUF`` of a socket, given only its descriptor.
+
+    (A :class:`socket.socket` made around the descriptor would close it when
+    collected.)
+    """
+    value, length = ctypes.c_int(), ctypes.c_uint32(ctypes.sizeof(ctypes.c_int))
+    value_p, length_p = ctypes.addressof(value), ctypes.addressof(length)
+    _check(_getsockopt(fd, socket.SOL_SOCKET, socket.SO_RCVBUF, value_p, length_p))
+    return value.value
 
 
 def _map(fd: int, length: int, offset: int) -> mmap.mmap:

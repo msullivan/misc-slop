@@ -30,6 +30,7 @@ from __future__ import annotations
 import asyncio
 import codecs
 import errno
+import fcntl
 import io
 import os
 import stat
@@ -41,13 +42,15 @@ from typing import Any
 from anyio import CancelScope
 
 from ._driver import MAX_RW, cancel_pending, current_driver
-from ._uring import stat_cached
+from ._uring import receive_buffer_size, stat_cached
 
 DEFAULT_BUFFER_SIZE = io.DEFAULT_BUFFER_SIZE
 # When the built-in buffered writer bypasses its buffer changed in 3.13.
 _WRITE_THROUGH_WHEN_EQUAL = sys.version_info >= (3, 13)
 # From 3.15 the built-in FileIO opened with "w+" says so in its mode, not "rb+".
 _MODE_SHOWS_TRUNCATE = sys.version_info >= (3, 15)
+# Reads up to this size allocate what they ask for without further thought.
+_SMALL_READ = 65536
 _NO_BUFFER = b""  # stands in for a read buffer that has not been allocated
 
 
@@ -127,6 +130,7 @@ class RawFile:
         self.name = name
         #: A regular file: its writes complete in bounded time.
         self._regular = regular
+        self._type: int | None = None  # S_IFMT of the file, when needed
         self._readable = readable
         self._writable = writable
         self._created = created
@@ -247,9 +251,33 @@ class RawFile:
     async def read(self, size: int | None = -1) -> bytes:
         if size is None or size < 0:
             return await self.readall()
-        buf = bytearray(size)
+        buf = bytearray(self._one_read_size(size))
         n = await self.readinto(buf)
         return _take_bytes(buf, n)
+
+    def _one_read_size(self, size: int) -> int:
+        """How big a buffer to give a single read of up to ``size`` bytes.
+
+        A buffer is zero-filled when it is made, which for 16 MiB takes 2 ms,
+        so making one far bigger than the read can fill was most of the
+        cost of a big read from a pipe or socket. A pipe never returns more
+        than it holds. A socket returns what is queued, which rarely exceeds
+        its receive buffer; when it does, the rest comes with the next read,
+        as a read may always return less than asked.
+        """
+        if size <= _SMALL_READ or self._regular:
+            return size
+        kind = self._type
+        if kind is None:
+            kind = self._type = stat.S_IFMT(stat_cached(self._fd)[0])
+        try:
+            if kind == stat.S_IFIFO:
+                return min(size, fcntl.fcntl(self._fd, fcntl.F_GETPIPE_SZ))
+            if kind == stat.S_IFSOCK:
+                return min(size, receive_buffer_size(self._fd))
+        except OSError:
+            pass
+        return size
 
     def _remaining(self) -> int:
         """Bytes between the position and the end of a regular file, else 0."""
@@ -548,7 +576,7 @@ class Buffered:
         if self._wbuf:
             await self.flush()
         if size >= self._size:
-            buf = bytearray(size)
+            buf = bytearray(raw._one_read_size(size))
             view = memoryview(buf)
             n = await raw._readinto(view, lambda n: self._pushback(view[:n]))
             del view

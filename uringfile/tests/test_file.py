@@ -746,3 +746,29 @@ def test_take_bytes_copies_when_a_view_is_still_alive():
     assert _take_bytes(buf, 4) == b"abcd"
     view.release()
     assert _take_bytes(bytearray(b"abcdef"), 6) == b"abcdef"
+
+
+@pytest.mark.parametrize("buffering", [0, -1])
+async def test_big_read_from_a_pipe_gets_everything_it_holds(fifo, buffering):
+    """Reads from a pipe allocate no more than the pipe holds, which must
+    still be enough for all of it."""
+    r, w = fifo
+    size = fcntl.fcntl(w, fcntl.F_SETPIPE_SZ, 1 << 20)
+    data = os.urandom(size)
+    assert os.write(w, data) == size
+    async with await open_file(r, "rb", buffering=buffering, closefd=False) as f:
+        read = f.read if buffering == 0 else f.read1
+        assert await read(16 << 20) == data
+
+
+@pytest.mark.parametrize("buffering", [0, -1])
+async def test_big_read_from_a_socket_gets_what_is_queued(buffering):
+    import socket
+
+    a, b = socket.socketpair()
+    with a, b:
+        data = os.urandom(100_000)
+        b.sendall(data)
+        async with await open_file(a.fileno(), "rb", buffering=buffering, closefd=False) as f:
+            read = f.read if buffering == 0 else f.read1
+            assert await read(16 << 20) == data
