@@ -15,9 +15,9 @@ import stat
 import sys
 import warnings
 from collections import deque
-from collections.abc import AsyncIterator, Callable, Iterable
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterable
 from os import PathLike
-from typing import IO, TYPE_CHECKING, Any, AnyStr, Generic, overload
+from typing import IO, TYPE_CHECKING, Any, AnyStr, Generic, TypeVar, overload
 
 from anyio import CancelScope, Event, create_task_group, to_thread
 from anyio.abc import AsyncResource
@@ -38,6 +38,8 @@ if TYPE_CHECKING:
     from _typeshed import OpenBinaryMode, OpenTextMode, ReadableBuffer, WriteableBuffer
 
 __all__ = ["AsyncFile", "open_file", "wrap_file"]
+
+_T = TypeVar("_T")
 
 
 class AsyncFile(AsyncResource, Generic[AnyStr]):
@@ -136,6 +138,22 @@ class AsyncFile(AsyncResource, Generic[AnyStr]):
             self._waiters.popleft().set()  # hand over directly; stays busy
         else:
             self._busy = False
+
+    async def _locked(self, fn: Callable[..., Awaitable[_T]], *args: Any) -> _T:
+        """Run ``fn(*args)`` with the file to ourselves.
+
+        ``read``, ``readline`` and ``write`` do this inline instead: the
+        extra coroutine costs about 0.3 µs a call, a fifth of a ``readline``
+        answered from the buffer.
+        """
+        if self._busy:
+            await self._turn()
+        else:
+            self._busy = True
+        try:
+            return await fn(*args)
+        finally:
+            self._release()
 
     # -- synchronous attributes ---------------------------------------
 
@@ -246,6 +264,7 @@ class AsyncFile(AsyncResource, Generic[AnyStr]):
                 break
 
     async def read(self, size: int | None = -1) -> AnyStr:
+        # _locked(), written out for speed; see there.
         if self._busy:
             await self._turn()
         else:
@@ -256,26 +275,13 @@ class AsyncFile(AsyncResource, Generic[AnyStr]):
             self._release()
 
     async def read1(self: AsyncFile[bytes], size: int = -1) -> bytes:
-        if self._busy:
-            await self._turn()
-        else:
-            self._busy = True
-        try:
-            return await self._binary("read1").read1(size)
-        finally:
-            self._release()
+        return await self._locked(self._binary("read1").read1, size)
 
     async def peek(self: AsyncFile[bytes], size: int = 0) -> bytes:
-        if self._busy:
-            await self._turn()
-        else:
-            self._busy = True
-        try:
-            return await self._binary("peek").peek(size)
-        finally:
-            self._release()
+        return await self._locked(self._binary("peek").peek, size)
 
     async def readline(self, size: int | None = -1) -> AnyStr:
+        # _locked(), written out for speed; see there.
         if self._busy:
             await self._turn()
         else:
@@ -286,44 +292,26 @@ class AsyncFile(AsyncResource, Generic[AnyStr]):
             self._release()
 
     async def readlines(self, hint: int | None = -1) -> list[AnyStr]:
-        if self._busy:
-            await self._turn()
-        else:
-            self._busy = True
-        try:
-            readline = self._impl.readline
-            lines: list[AnyStr] = []
-            total = 0
-            while True:
-                line = await readline()
-                if not line:
-                    return lines
-                lines.append(line)
-                total += len(line)
-                if hint is not None and 0 < hint < total:  # as the C io module counts
-                    return lines
-        finally:
-            self._release()
+        return await self._locked(self._readlines, hint)
+
+    async def _readlines(self, hint: int | None) -> list[AnyStr]:
+        readline = self._impl.readline
+        lines: list[AnyStr] = []
+        total = 0
+        while True:
+            line = await readline()
+            if not line:
+                return lines
+            lines.append(line)
+            total += len(line)
+            if hint is not None and 0 < hint < total:  # as the C io module counts
+                return lines
 
     async def readinto(self: AsyncFile[bytes], b: WriteableBuffer) -> int:
-        if self._busy:
-            await self._turn()
-        else:
-            self._busy = True
-        try:
-            return await self._binary("readinto").readinto(b)
-        finally:
-            self._release()
+        return await self._locked(self._binary("readinto").readinto, b)
 
     async def readinto1(self: AsyncFile[bytes], b: WriteableBuffer) -> int:
-        if self._busy:
-            await self._turn()
-        else:
-            self._busy = True
-        try:
-            return await self._binary("readinto1").readinto1(b)
-        finally:
-            self._release()
+        return await self._locked(self._binary("readinto1").readinto1, b)
 
     def _binary(self, method: str) -> Any:
         impl = self._impl
@@ -340,6 +328,7 @@ class AsyncFile(AsyncResource, Generic[AnyStr]):
     async def write(self: AsyncFile[str], b: str) -> int: ...
 
     async def write(self, b: ReadableBuffer | str) -> int:
+        # _locked(), written out for speed; see there.
         if self._busy:
             await self._turn()
         else:
@@ -356,37 +345,19 @@ class AsyncFile(AsyncResource, Generic[AnyStr]):
     async def writelines(self: AsyncFile[str], lines: Iterable[str]) -> None: ...
 
     async def writelines(self, lines: Iterable[ReadableBuffer] | Iterable[str]) -> None:
-        if self._busy:
-            await self._turn()
-        else:
-            self._busy = True
-        try:
-            write = self._impl.write
-            for line in lines:
-                await write(line)
-        finally:
-            self._release()
+        return await self._locked(self._writelines, lines)
+
+    async def _writelines(self, lines: Iterable[Any]) -> None:
+        write = self._impl.write
+        for line in lines:
+            await write(line)
 
     async def truncate(self, size: int | None = None) -> int:
-        if self._busy:
-            await self._turn()
-        else:
-            self._busy = True
-        try:
-            return await self._impl.truncate(size)
-        finally:
-            self._release()
+        return await self._locked(self._impl.truncate, size)
 
     async def flush(self) -> None:
         """Pass buffered writes to the kernel. (Not a sync to disk; see :meth:`fsync`.)"""
-        if self._busy:
-            await self._turn()
-        else:
-            self._busy = True
-        try:
-            return await self._impl.flush()
-        finally:
-            self._release()
+        return await self._locked(self._impl.flush)
 
     async def fsync(self, *, datasync: bool = False) -> None:
         """Flush, then have the kernel commit the file to storage.
@@ -394,36 +365,17 @@ class AsyncFile(AsyncResource, Generic[AnyStr]):
         With ``datasync`` this is ``fdatasync(2)``: metadata not needed to
         read the data back is not forced out.
         """
-        if self._busy:
-            await self._turn()
-        else:
-            self._busy = True
-        try:
-            return await self._impl.fsync(datasync)
-        finally:
-            self._release()
+        return await self._locked(self._impl.fsync, datasync)
 
     # -- position -----------------------------------------------------
 
     async def seek(self, offset: int, whence: int | None = os.SEEK_SET) -> int:
-        if self._busy:
-            await self._turn()
-        else:
-            self._busy = True
-        try:
-            return await self._impl.seek(offset, os.SEEK_SET if whence is None else whence)
-        finally:
-            self._release()
+        return await self._locked(
+            self._impl.seek, offset, os.SEEK_SET if whence is None else whence
+        )
 
     async def tell(self) -> int:
-        if self._busy:
-            await self._turn()
-        else:
-            self._busy = True
-        try:
-            return await self._impl.tell()
-        finally:
-            self._release()
+        return await self._locked(self._impl.tell)
 
 
 # ---------------------------------------------------------------------------
