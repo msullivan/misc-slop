@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import gc
 import os
+import re
+import tempfile
+from pathlib import Path
 
 import pytest
 
@@ -25,6 +28,18 @@ else:
 @pytest.fixture(params=_backends)
 def anyio_backend(request):
     return request.param
+
+
+@pytest.fixture
+def tmp_path(request, tmp_path_factory):
+    """pytest's tmp_path, without the cost that grows with the suite.
+
+    pytest numbers each test's directory by listing every directory made so
+    far, and over thousands of tests that came to a third of the run time.
+    These go in the same place, under names mkdtemp picks.
+    """
+    prefix = re.sub(r"\W", "_", request.node.name)[:30] + "-"
+    return Path(tempfile.mkdtemp(prefix=prefix, dir=tmp_path_factory.getbasetemp()))
 
 
 @pytest.fixture

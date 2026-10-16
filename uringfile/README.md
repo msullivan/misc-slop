@@ -238,7 +238,7 @@ Reading the table:
 
 ```
 pip install -e .[test]
-pytest                      # ~8250 tests, most of them differential; a few minutes
+pytest                      # ~3200 tests, most of them differential; under a minute
 python bench/bench.py       # BENCH_DIR=/some/disk to pick the filesystem
 ruff check && ruff format --check && mypy src
 ```

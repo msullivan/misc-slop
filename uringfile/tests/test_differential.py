@@ -8,6 +8,7 @@ contents must agree.
 
 from __future__ import annotations
 
+import functools
 import io
 import os
 import random
@@ -18,7 +19,12 @@ import pytest
 
 from uringfile import open_file
 
-pytestmark = pytest.mark.anyio
+pytestmark = [
+    pytest.mark.anyio,
+    # What is compared here is _io.py, which is the same on every loop; the
+    # loops' part is in test_driver.py and test_cancel.py.
+    pytest.mark.parametrize("anyio_backend", [("asyncio", {})], indirect=True, ids=["asyncio"]),
+]
 
 SEEDS = range(12)
 
@@ -79,12 +85,15 @@ class Pair:
 
     async def peek(self):
         got = await self.ours.peek()
+        # Flush first, as peek() does: in append mode that moves the position.
+        self.ref.flush()
         pos = self.ref.tell()
         expected = self.ref.read(len(got)) if got else self.ref.read(1)
         self.ref.seek(pos)
         self.log.append(("peek", (), ("ok", expected)))
         assert got == expected, self.explain(got)
-        assert (await self.ours.tell()) == pos
+        tell = await self.ours.tell()
+        assert tell == pos, self.explain(("tell after peek", tell))
 
 
 def make_pair_paths(tmp_path, content: bytes | None):
@@ -95,9 +104,18 @@ def make_pair_paths(tmp_path, content: bytes | None):
     return a, b
 
 
+@functools.cache
+def _spread(alphabet):
+    """A translation table taking each of the 256 byte values to a character
+    of ``alphabet``, which random bytes then pick about evenly."""
+    return [alphabet[i % len(alphabet)] for i in range(256)]
+
+
+_BYTES = bytes(_spread(b"abcdefghij\n\n\r \x00\xff"))
+
+
 def random_bytes(rng, n):
-    alphabet = b"abcdefghij\n\n\r \x00\xff"
-    return bytes(rng.choice(alphabet) for _ in range(n))
+    return rng.randbytes(n).translate(_BYTES)
 
 
 # ---------------------------------------------------------------------------
@@ -232,7 +250,7 @@ def random_text(rng, n, encoding):
         alphabet += "é€\U0001f600"
     elif encoding == "latin-1":
         alphabet += "éÿ"
-    return "".join(rng.choice(alphabet) for _ in range(n))
+    return rng.randbytes(n).decode("latin-1").translate(_spread(alphabet))
 
 
 @pytest.mark.parametrize("seed", SEEDS)
@@ -295,6 +313,13 @@ async def test_text(tmp_path, mode, encoding, newline, seed):
             if op == "write" and just_read:
                 await pair.same("seek", await tell())
                 just_read = False
+            if op == "write" and mode == "a+":
+                # As in test_binary: the builtin appends wrongly while its
+                # buffer holds read-ahead, which reads leave and so does
+                # seeking to a cookie that has bytes re-decoded.
+                raw_pos = os.lseek(ref.fileno(), 0, os.SEEK_CUR)
+                if ref.buffer.tell() != raw_pos:
+                    await pair.same("seek", 0, os.SEEK_END)
 
             if op == "read":
                 await pair.same("read", small())
