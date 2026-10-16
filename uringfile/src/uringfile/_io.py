@@ -69,16 +69,24 @@ if sys.version_info >= (3, 15):
     def _take_bytes(buf: bytearray, n: int) -> bytes:
         """The first ``n`` bytes of ``buf``, a buffer nobody else will use.
 
-        Without a copy, provided every view of ``buf`` has been released;
-        one kept alive by a reference cycle means copying after all.
-        (``take_bytes(n)`` alone would move whichever of the two parts is
-        smaller. Shrinking the allocation first moves neither.)
+        A buffer that was filled, or as good as (readall leaves a byte
+        spare), becomes the result without a copy. One that was filled
+        only in part is copied from: shrinking it and handing it over
+        measured several times slower than copying in a loop of reads
+        (``read(1 MiB)`` of 100 bytes: 650 us against 63). glibc then never
+        gets a big block back to reuse, so every new buffer comes from
+        fresh pages, which zero-filling it faults in one by one.
+
+        A view of ``buf`` still alive (kept by a reference cycle, say)
+        would make ``take_bytes`` refuse; then it is copied too.
         """
-        try:
-            buf.resize(n)
-            return buf.take_bytes()
-        except BufferError:
-            return memoryview(buf)[:n].tobytes()
+        if len(buf) - n <= 64:
+            try:
+                buf.resize(n)
+                return buf.take_bytes()
+            except BufferError:
+                pass
+        return memoryview(buf)[:n].tobytes()
 
 else:
 
