@@ -46,6 +46,8 @@ from ._uring import stat_cached
 DEFAULT_BUFFER_SIZE = io.DEFAULT_BUFFER_SIZE
 # When the built-in buffered writer bypasses its buffer changed in 3.13.
 _WRITE_THROUGH_WHEN_EQUAL = sys.version_info >= (3, 13)
+# From 3.15 the built-in FileIO opened with "w+" says so in its mode, not "rb+".
+_MODE_SHOWS_TRUNCATE = sys.version_info >= (3, 15)
 _NO_BUFFER = b""  # stands in for a read buffer that has not been allocated
 
 
@@ -85,6 +87,7 @@ class RawFile:
         writable: bool,
         created: bool = False,
         appending: bool = False,
+        truncated: bool = False,
         closefd: bool = True,
         size_hint: int | None = None,
         regular: bool = False,
@@ -97,6 +100,7 @@ class RawFile:
         self._writable = writable
         self._created = created
         self._appending = appending
+        self._truncated = truncated
         self._closefd = closefd
         self._seekable: bool | None = None
         # Bytes that a read delivered after its caller had been cancelled.
@@ -114,7 +118,9 @@ class RawFile:
         if self._appending:
             return "ab+" if self._readable else "ab"
         if self._readable:
-            return "rb+" if self._writable else "rb"
+            if not self._writable:
+                return "rb"
+            return "wb+" if self._truncated and _MODE_SHOWS_TRUNCATE else "rb+"
         return "wb"
 
     @property

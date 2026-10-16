@@ -662,6 +662,7 @@ async def open_file(
             writable=writable,
             created=creating,
             appending=appending,
+            truncated=writing,
             closefd=closefd,
             regular=stat.S_ISREG(st_mode),
             # Only trust the size if we know we are at the start.
@@ -735,6 +736,7 @@ def wrap_file(file: IO[AnyStr], *, newline: str | None = None) -> AsyncFile[AnyS
         writable=writable,
         appending=isinstance(mode, str) and "a" in mode,
         created=isinstance(mode, str) and "x" in mode,
+        truncated=isinstance(mode, str) and "w" in mode,
         closefd=False,
         regular=stat.S_ISREG(stat_cached(fd)[0]),
     )

@@ -7,6 +7,7 @@ import errno
 import gc
 import os
 import time
+import warnings
 
 import anyio
 import pytest
@@ -281,7 +282,10 @@ def test_fork(anyio_backend, path):
 
     parent_driver = Driver()
     try:
-        pid = os.fork()
+        with warnings.catch_warnings():
+            # Earlier tests leave idle threads about (Trio's, io_uring's).
+            warnings.simplefilter("ignore", DeprecationWarning)
+            pid = os.fork()
         if pid == 0:
             code = 1
             try:
@@ -503,8 +507,6 @@ async def test_a_signalled_eventfd_does_not_keep_the_loop_awake(monkeypatch):
 async def test_fork_leaves_the_parents_reader_alone():
     """A forked child closes its copy of the ring. The loop's epoll instance
     is shared with the parent, so it must not unregister anything from it."""
-    import warnings
-
     driver = current_driver()
     await blocked_read(driver)
     assert driver._watcher is not None
