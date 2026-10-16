@@ -734,3 +734,15 @@ async def test_interrupted_text_read_is_undone(path, monkeypatch, encoding, call
         assert await f.tell() == before
         assert await f.readline() == lines[1]
         assert await f.read() == lines[2]
+
+
+def test_take_bytes_copies_when_a_view_is_still_alive():
+    """On 3.15 reads hand over their buffer without copying it, which a
+    leftover view of it would forbid. Then they copy, rather than fail."""
+    from uringfile._io import _take_bytes
+
+    buf = bytearray(b"abcdef")
+    view = memoryview(buf)
+    assert _take_bytes(buf, 4) == b"abcd"
+    view.release()
+    assert _take_bytes(bytearray(b"abcdef"), 6) == b"abcdef"

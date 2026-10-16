@@ -64,6 +64,29 @@ def _writable_view(b: Any) -> memoryview:
     return view.cast("B")
 
 
+if sys.version_info >= (3, 15):
+
+    def _take_bytes(buf: bytearray, n: int) -> bytes:
+        """The first ``n`` bytes of ``buf``, a buffer nobody else will use.
+
+        Without a copy, provided every view of ``buf`` has been released;
+        one kept alive by a reference cycle means copying after all.
+        (``take_bytes(n)`` alone would move whichever of the two parts is
+        smaller. Shrinking the allocation first moves neither.)
+        """
+        try:
+            buf.resize(n)
+            return buf.take_bytes()
+        except BufferError:
+            return memoryview(buf)[:n].tobytes()
+
+else:
+
+    def _take_bytes(buf: bytearray, n: int) -> bytes:
+        """The first ``n`` bytes of ``buf``, a buffer nobody else will use."""
+        return memoryview(buf)[:n].tobytes()
+
+
 # ---------------------------------------------------------------------------
 # Raw
 # ---------------------------------------------------------------------------
@@ -218,7 +241,7 @@ class RawFile:
             return await self.readall()
         buf = bytearray(size)
         n = await self.readinto(buf)
-        return memoryview(buf)[:n].tobytes()
+        return _take_bytes(buf, n)
 
     def _remaining(self) -> int:
         """Bytes between the position and the end of a regular file, else 0."""
@@ -250,13 +273,14 @@ class RawFile:
                 chunks.append(view[:n].tobytes())
 
             n = await self._readinto(view, landed)
+            del view, landed
             if not n:
                 return
             if n == len(buf):
                 chunks.append(buf)
                 bufsize *= 2
             else:
-                chunks.append(view[:n].tobytes())
+                chunks.append(_take_bytes(buf, n))
                 bufsize = DEFAULT_BUFFER_SIZE
 
     async def readall(self) -> bytes:
@@ -486,7 +510,8 @@ class Buffered:
         except BaseException:
             self._pushback(view[:got])
             raise
-        return view[:got].tobytes()
+        del view
+        return _take_bytes(out, got)
 
     async def _readall(self) -> bytes:
         self.raw._check_readable()
@@ -518,7 +543,8 @@ class Buffered:
             buf = bytearray(size)
             view = memoryview(buf)
             n = await raw._readinto(view, lambda n: self._pushback(view[:n]))
-            return view[:n].tobytes()
+            del view
+            return _take_bytes(buf, n)
         n = await self._fill()
         return self._take(min(n, size))
 
