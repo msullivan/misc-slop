@@ -1,0 +1,18 @@
+[workspace]
+resolver = "2"
+members = ["core", "cli", "wasm"]
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 4
+debug = 1
+
+# For the browser build: cargo build --profile web -p menagerie-wasm --target wasm32-unknown-unknown
+[profile.web]
+inherits = "release"
+debug = false
+strip = true
+lto = "fat"
+codegen-units = 1
+panic = "abort"

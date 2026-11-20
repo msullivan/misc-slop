@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+</head>
+<body>
+<!--PAGE-->
+<title>Menagerie</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,700&family=IBM+Plex+Mono:wght@400;500&family=Newsreader:ital,opsz,wght@1,6..72,400;1,6..72,500&display=swap">
+<style>
+/* Layout: the diorama fills the window; a specimen drawer (the map of every
+   body plan evolution kept) sits on the left, the label for the specimen on
+   show sits bottom right. On a phone the diorama is the top half and the
+   drawer and label stack beneath it. */
+:root {
+  --bg: #E6EBE3;
+  --sky: #F3F6EF;
+  --ground: #D7DED3;
+  --grid: #B4C0B3;
+  --panel: #F8FAF5;
+  --ink: #17282A;
+  --muted: #586966;
+  --line: #C6CFC5;
+  --accent: #B26A00;
+  --accent-ink: #FFFFFF;
+  --cell-empty: #DCE2D9;
+  --cell-lo: #C3D3C7;
+  --cell-hi: #1C6B60;
+  --water: #CFE3E6;
+  --water-deep: #9CC3CB;
+  --display: "Bricolage Grotesque", "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  --name: "Newsreader", "Iowan Old Style", Georgia, serif;
+  --data: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0E1615;
+    --sky: #131E1D;
+    --ground: #1A2625;
+    --grid: #30413F;
+    --panel: #162120;
+    --ink: #E4ECE7;
+    --muted: #8DA09B;
+    --line: #2B3A38;
+    --accent: #F2B632;
+    --accent-ink: #1B1503;
+    --cell-empty: #1B2726;
+    --cell-lo: #1F3833;
+    --cell-hi: #4DBFA6;
+    --water: #0F2A31;
+    --water-deep: #081A20;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0E1615;
+  --sky: #131E1D;
+  --ground: #1A2625;
+  --grid: #30413F;
+  --panel: #162120;
+  --ink: #E4ECE7;
+  --muted: #8DA09B;
+  --line: #2B3A38;
+  --accent: #F2B632;
+  --accent-ink: #1B1503;
+  --cell-empty: #1B2726;
+  --cell-lo: #1F3833;
+  --cell-hi: #4DBFA6;
+  --water: #0F2A31;
+  --water-deep: #081A20;
+  color-scheme: dark;
+}
+
+[hidden] { display: none !important; }
+html, body { height: 100%; margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--display);
+  font-size: 14px;
+  line-height: 1.4;
+  overflow: hidden;
+}
+button { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+#app { position: relative; height: 100%; }
+#stage { position: absolute; inset: 0; }
+#stage canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: grab; }
+#stage canvas.dragging { cursor: grabbing; }
+#stage canvas.aiming { cursor: crosshair; }
+
+/* Lane labels and the goal hint float over the 3D view. */
+#tags { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.tag {
+  position: absolute; transform: translate(-50%, -100%);
+  font-family: var(--data); font-size: 11px; white-space: nowrap;
+  background: var(--panel); color: var(--ink); border: 1px solid var(--line);
+  padding: 1px 6px; border-radius: 3px;
+}
+.tag.lead { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.tag.out { opacity: .55; text-decoration: line-through; }
+
+.panel {
+  box-sizing: border-box;
+  position: absolute;
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  backdrop-filter: blur(6px);
+}
+
+/* Drawer: title, habitats, map. */
+#drawer {
+  left: max(16px, env(safe-area-inset-left, 0px));
+  top: 16px;
+  width: 348px;
+  padding: 14px 14px 12px;
+  display: flex; flex-direction: column; gap: 12px;
+  max-height: calc(100% - 32px);
+  overflow: auto;
+}
+h1 {
+  font-size: 26px; font-weight: 700; letter-spacing: -0.02em; line-height: 1;
+  font-variation-settings: "opsz" 96;
+  margin: 0;
+}
+.lede { margin: 6px 0 0; color: var(--muted); font-size: 13px; text-wrap: pretty; }
+
+#habitats { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
+#habitats button {
+  border: 1px solid var(--line); background: transparent; border-radius: 4px;
+  padding: 5px 0; cursor: pointer; font-weight: 600; font-size: 11.5px; min-width: 0; letter-spacing: -0.01em;
+}
+#habitats button[aria-pressed="true"] { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+#habitats button[aria-disabled="true"] { opacity: .45; border-style: dashed; }
+#sources { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--line); border-radius: 5px; padding: 2px; gap: 2px; }
+#sources button { border: 0; background: transparent; border-radius: 3px; padding: 5px 6px; cursor: pointer; font-weight: 600; font-size: 13px; }
+#sources button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+#breed { display: flex; flex-direction: column; gap: 6px; }
+#breedgo { border: 1px solid var(--ink); background: var(--ink); color: var(--panel); border-radius: 4px; padding: 7px 10px; cursor: pointer; font-weight: 700; }
+#breedgo[aria-pressed="true"] { background: transparent; color: var(--ink); }
+#spark { width: 100%; height: 44px; display: block; }
+#breedstat { margin: 0; font-family: var(--data); font-size: 11px; color: var(--muted); min-height: 2.8em; }
+#cheat { align-self: flex-start; border: 0; background: none; padding: 0; cursor: pointer; color: var(--accent); font-weight: 600; font-size: 13px; text-decoration: underline; text-underline-offset: 3px; }
+#about { font-size: 12.5px; color: var(--muted); }
+#about summary { cursor: pointer; font-weight: 600; color: var(--ink); }
+#about p { margin: 6px 0 0; text-wrap: pretty; }
+#brief { margin: 0; color: var(--muted); font-size: 12.5px; min-height: 2.8em; text-wrap: pretty; }
+
+.maphead { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.eyebrow { font-family: var(--data); font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+#families { display: flex; flex-wrap: wrap; gap: 3px; margin: 5px 0 6px; }
+#families button { border: 1px solid var(--line); background: transparent; border-radius: 3px; padding: 1px 0; min-width: 30px; cursor: pointer; font-family: var(--data); font-size: 11px; }
+#families button[aria-pressed="true"] { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+#mapwrap { display: grid; grid-template-columns: 14px 1fr; grid-template-rows: 1fr auto; gap: 4px; }
+#yaxis { writing-mode: vertical-rl; transform: rotate(180deg); text-align: center; }
+#xaxis { grid-column: 2; text-align: center; }
+#map { display: grid; gap: 2px; }
+#map button {
+  aspect-ratio: 1; border: 0; padding: 0; border-radius: 2px; cursor: pointer;
+  background: color-mix(in oklab, var(--cell-lo), var(--cell-hi) calc(var(--t) * 100%));
+}
+#map button.empty { background: var(--cell-empty); cursor: default; }
+#map button[aria-pressed="true"] { outline: 2px solid var(--accent); outline-offset: 1px; z-index: 1; }
+#map button.champ { box-shadow: inset 0 0 0 2px var(--panel); }
+#legend { display: flex; align-items: center; gap: 6px; font-family: var(--data); font-size: 10.5px; color: var(--muted); }
+#legend .ramp { flex: 1; height: 6px; border-radius: 3px; background: linear-gradient(90deg, var(--cell-lo), var(--cell-hi)); }
+#tally { margin: 0; font-family: var(--data); font-size: 11px; color: var(--muted); }
+
+/* Specimen label. */
+#label {
+  right: max(16px, env(safe-area-inset-right, 0px));
+  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  width: 348px;
+  padding: 12px 14px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+#binomial { font-family: var(--name); font-style: italic; font-size: 25px; line-height: 1.05; margin: 2px 0 0; letter-spacing: -0.01em; }
+#common { margin: 2px 0 0; color: var(--muted); font-size: 12.5px; }
+dl#stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px 10px; margin: 0; }
+dl#stats div { min-width: 0; }
+dl#stats dt { font-family: var(--data); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+dl#stats dd { margin: 0; font-family: var(--data); font-size: 15px; font-weight: 500; font-variant-numeric: tabular-nums; }
+#modes { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; }
+#modes button, #transport button {
+  border: 1px solid var(--line); background: transparent; border-radius: 4px;
+  padding: 5px 2px; cursor: pointer; font-weight: 600; font-size: 12px;
+}
+#modes button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+#modes button:disabled { opacity: .4; cursor: default; }
+#modehint { margin: 0; color: var(--muted); font-size: 12px; min-height: 2.8em; text-wrap: pretty; }
+#transport { display: flex; gap: 4px; align-items: center; }
+#transport .spacer { flex: 1; }
+#transport button { padding: 3px 8px; font-family: var(--data); font-weight: 500; font-size: 11.5px; }
+#transport button[aria-pressed="true"] { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+#gen { display: flex; flex-direction: column; gap: 2px; }
+#gen input { width: 100%; accent-color: var(--accent); }
+#gen .row { display: flex; justify-content: space-between; font-family: var(--data); font-size: 11px; color: var(--muted); }
+
+/* Readout over the scene. */
+#readout {
+  right: max(16px, env(safe-area-inset-right, 0px));
+  top: 16px;
+  padding: 8px 12px;
+  display: flex; gap: 16px;
+  font-family: var(--data); font-variant-numeric: tabular-nums;
+}
+#readout div { display: flex; flex-direction: column; }
+#readout span { font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+#readout b { font-size: 17px; font-weight: 500; }
+
+#loading {
+  position: absolute; inset: 0; display: grid; place-items: center;
+  background: var(--bg); color: var(--muted); font-family: var(--data); font-size: 13px; text-align: center; padding: 24px;
+}
+
+@media (max-width: 760px), (max-height: 520px) {
+  body { overflow: auto; }
+  #app { height: auto; min-height: 100%; display: flex; flex-direction: column; }
+  #stage { position: sticky; top: env(safe-area-inset-top, 0px); height: 52svh; flex: none; z-index: 2; border-bottom: 1px solid var(--line); }
+  #tags { height: 100%; }
+  .panel { position: static; width: auto; border-radius: 0; border-width: 0 0 1px; backdrop-filter: none; background: var(--panel);
+    padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+  #drawer { max-height: none; order: 3; width: auto; }
+  #label { order: 2; width: auto; }
+  /* The readout rides on the stage, so it stays put while the panels scroll. */
+  #readout { position: absolute; top: 8px; right: max(16px, env(safe-area-inset-right, 0px)); width: auto;
+    border: 1px solid var(--line); border-radius: 6px; padding: 5px 9px; gap: 12px; }
+  #readout b { font-size: 14px; }
+}
+@media (max-height: 520px) and (min-width: 761px) {
+  #stage { height: 72svh; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div id="app">
+  <div id="stage">
+    <canvas id="view" aria-label="3D view of the selected creature"></canvas>
+    <div id="tags"></div>
+    <section class="panel" id="readout" aria-live="off">
+      <div><span id="r1k">time</span><b id="r1">0.0 s</b></div>
+      <div><span id="r2k">distance</span><b id="r2">0.00 m</b></div>
+      <div><span id="r3k">speed</span><b id="r3">0.00 m/s</b></div>
+    </section>
+  </div>
+
+  <section class="panel" id="drawer">
+    <header>
+      <h1>Menagerie</h1>
+      <p class="lede">Nobody designed these animals. Body plans and gaits were bred from random boxes, scored only on how well they did the job.</p>
+    </header>
+    <div id="sources" role="group" aria-label="Which creatures">
+      <button id="src-zoo" aria-pressed="true">The collection</button>
+      <button id="src-live" aria-pressed="false">Breed your own</button>
+    </div>
+    <div id="habitats" role="group" aria-label="Habitat"></div>
+    <p id="brief"></p>
+    <div id="breed" hidden>
+      <button id="breedgo" aria-pressed="false">Start breeding</button>
+      <canvas id="spark" aria-label="Best score so far"></canvas>
+      <p id="breedstat"></p>
+    </div>
+    <div>
+      <div class="maphead"><span class="eyebrow" id="maptitle">Every body plan kept</span><span class="eyebrow" id="filled"></span></div>
+      <div id="families" role="group" aria-label="Family" hidden></div>
+      <div id="mapwrap">
+        <div class="eyebrow" id="yaxis">taller</div>
+        <div id="map" role="group" aria-label="Map of evolved creatures"></div>
+        <div class="eyebrow" id="xaxis">more body parts</div>
+      </div>
+    </div>
+    <div id="legend"><span id="lo">0</span><span class="ramp"></span><span id="hi">0</span></div>
+    <p id="tally"></p>
+    <button id="cheat">See the one that cheated</button>
+    <details id="about">
+      <summary>How this works</summary>
+      <p>A creature is a tree of boxes joined by hinges. Every hinge follows one body-wide rhythm, shifted and scaled by a handful of numbers, and can listen to a few senses: touch, which way is up, where the goal is.</p>
+      <p>Evolution starts from thousands of random bodies. Each is dropped into the habitat and scored. The best of every shape is kept, copied with small random changes, and scored again, a few million times over. Each habitat was bred as six separate families that never mixed.</p>
+      <p>What you watch is not a recording. The same physics that scored each animal is running here in your browser, and gives the same result to the last digit.</p>
+    </details>
+  </section>
+
+  <section class="panel" id="label">
+    <div>
+      <span class="eyebrow" id="tagline">Specimen</span>
+      <h2 id="binomial">&nbsp;</h2>
+      <p id="common">&nbsp;</p>
+    </div>
+    <dl id="stats"></dl>
+    <div id="modes" role="group" aria-label="View">
+      <button id="m-watch" aria-pressed="true">Trial</button>
+      <button id="m-roam" aria-pressed="false">Roam</button>
+      <button id="m-line" aria-pressed="false">Lineage</button>
+      <button id="m-race" aria-pressed="false">Race</button>
+      <button id="m-fight" aria-pressed="false">Sumo</button>
+    </div>
+    <p id="modehint"></p>
+    <div id="gen" hidden>
+      <input type="range" id="genslider" min="0" max="1" step="1" value="0" aria-label="Ancestor">
+      <div class="row"><span id="genlo">founder</span><span id="gennow"></span><span id="genhi">today</span></div>
+    </div>
+    <div id="transport">
+      <button id="pause" aria-pressed="false">Pause</button>
+      <button id="restart">Restart</button>
+      <span class="spacer"></span>
+      <button class="spd" data-s="0.25" aria-pressed="false">¼×</button>
+      <button class="spd" data-s="1" aria-pressed="true">1×</button>
+      <button class="spd" data-s="4" aria-pressed="false">4×</button>
+    </div>
+  </section>
+
+  <div id="loading">Waking the animals…</div>
+</div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
+<script type="module" src="app.js"></script>
+<!--/PAGE-->
+</body>
+</html>
