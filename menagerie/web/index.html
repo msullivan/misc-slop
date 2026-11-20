@@ -316,11 +316,29 @@ dl#stats dd { margin: 0; font-family: var(--data); font-size: 15px; font-weight:
   <div id="loading">Waking the animals…</div>
 </div>
 
-<script type="importmap">
-{ "imports": {
-  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
-  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
-} }
+<script>
+// If the page's main script can't start (a blocked import, say), this is
+// the only code left running: say what went wrong instead of hanging.
+(function () {
+  var seen = [];
+  function note(text) {
+    if (seen.indexOf(text) < 0) seen.push(text);
+  }
+  window.addEventListener('error', function (e) {
+    note(e.message || (e.target && (e.target.src || e.target.href) ? 'could not load ' + (e.target.src || e.target.href) : 'a script failed to load'));
+  }, true);
+  window.addEventListener('unhandledrejection', function (e) {
+    note(String((e.reason && e.reason.message) || e.reason));
+  });
+  document.addEventListener('securitypolicyviolation', function (e) {
+    note('blocked by the page\u2019s security policy: ' + (e.blockedURI || e.violatedDirective) + ' (' + e.violatedDirective + ')');
+  });
+  setTimeout(function () {
+    var el = document.getElementById('loading');
+    if (!el || el.hidden || window.menagerie || el.textContent.indexOf('Waking') !== 0) return;
+    el.textContent = 'The page did not start. ' + (seen.length ? seen.join(' \u2022 ') : 'No error was reported; the main script may have been blocked from loading.');
+  }, 9000);
+})();
 </script>
 <script type="module" src="app.js"></script>
 <!--/PAGE-->

@@ -1,5 +1,6 @@
-import * as THREE from 'three';
-import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+// Imported by full URL, with no import map: a host page that has already
+// started loading modules ignores import maps, and then nothing runs.
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
 import { compileEngine, loadEngine } from './engine.js';
 import { Nursery } from './nursery.js';
 
@@ -430,10 +431,42 @@ const flag = new THREE.Group();
 const _q = new THREE.Quaternion();
 const _v = new THREE.Vector3();
 
+/** A box with its edges and corners rounded off to radius `r`. */
+function roundedBox(w, h, d, r) {
+  const g = new THREE.BoxGeometry(w, h, d, 4, 4, 4);
+  const half = [w / 2, h / 2, d / 2];
+  const pos = g.attributes.position;
+  const nor = g.attributes.normal;
+  const p = [0, 0, 0];
+  const c = [0, 0, 0];
+  for (let i = 0; i < pos.count; i++) {
+    p[0] = pos.getX(i);
+    p[1] = pos.getY(i);
+    p[2] = pos.getZ(i);
+    let len = 0;
+    for (let k = 0; k < 3; k++) {
+      const inner = half[k] - r;
+      // Move the quarter-way rows out to where the rounding starts, so
+      // faces stay flat right up to the fillet.
+      if (Math.abs(Math.abs(p[k]) - half[k] / 2) < 1e-6) p[k] = Math.sign(p[k]) * inner;
+      // Each point sits `r` out from the nearest point of the inner box.
+      c[k] = Math.max(-inner, Math.min(inner, p[k]));
+      len += (p[k] - c[k]) ** 2;
+    }
+    len = Math.sqrt(len) || 1;
+    const n = [(p[0] - c[0]) / len, (p[1] - c[1]) / len, (p[2] - c[2]) / len];
+    pos.setXYZ(i, c[0] + n[0] * r, c[1] + n[1] * r, c[2] + n[2] * r);
+    nor.setXYZ(i, n[0], n[1], n[2]);
+  }
+  return g;
+}
+
 class Actor {
-  constructor(world, c, { dim = false, avoidHue = null } = {}) {
+  constructor(world, c, { dim = false, avoidHue = null, dx = 0 } = {}) {
     this.world = world;
     this.c = c;
+    // Drawn this far to the side of where it is simulated (see lanes).
+    this.dx = dx;
     this.group = new THREE.Group();
     const shapes = world.shapes(c);
     const st = world.state(c);
@@ -450,7 +483,7 @@ class Actor {
     for (let i = 0; i < n; i++) maxDepth = Math.max(maxDepth, shapes[i * 8 + 3]);
     for (let i = 0; i < n; i++) {
       const [hx, hy, hz, depth, flip, , parent, r] = shapes.subarray(i * 8, i * 8 + 8);
-      const geo = new RoundedBoxGeometry(hx * 2, hy * 2, hz * 2, 3, r * 1.6);
+      const geo = roundedBox(hx * 2, hy * 2, hz * 2, Math.min(r * 1.6, 0.45 * Math.min(hx, hy, hz)));
       const col = new THREE.Color().setHSL(
         (this.hue + depth * 0.035) % 1,
         dim ? 0.25 : 0.62,
@@ -509,12 +542,13 @@ class Actor {
     for (let i = 0; i < this.meshes.length; i++) {
       const o = i * 8;
       const m = this.meshes[i];
-      m.position.set(t[o], t[o + 1], t[o + 2]);
+      m.position.set(t[o] + this.dx, t[o + 1], t[o + 2]);
       m.quaternion.set(t[o + 3], t[o + 4], t[o + 5], t[o + 6]);
       m.material.emissiveIntensity = 0.22 * t[o + 7];
     }
     const st = this.world.state(this.c);
-    this.com.set(st.com[0], st.com[1], st.com[2]);
+    st.goal[0] += this.dx;
+    this.com.set(st.com[0] + this.dx, st.com[1], st.com[2]);
     this.vel = st.vel;
     this.exploded = st.exploded;
     this.goal = st.goal;
@@ -685,8 +719,23 @@ canvas.addEventListener(
 
 // The stage owns the simulated world on show and knows the four ways of
 // looking at a creature.
+/**
+ * Step an open world until its creatures have come to rest and its clock
+ * has started, without drawing any of it: the same settling a scored trial
+ * does before it begins.
+ */
+function settle(world) {
+  let guard = 0;
+  do world.step(1);
+  while (world.time < 0 && guard++ < 400);
+}
+
 const stage = {
   eng: null,
+  // Race and lineage give every creature a world of its own, stepped in
+  // lockstep: each then starts from exactly the pose its trial started
+  // from, which gaits turn out to be touchy about. `world` is the first.
+  worlds: [],
   world: null,
   actors: [],
   tags: [],
@@ -714,7 +763,8 @@ const stage = {
   clear() {
     for (const a of this.actors) a.dispose();
     this.actors = [];
-    if (this.world) this.world.free();
+    for (const w of this.worlds) w.free();
+    this.worlds = [];
     this.world = null;
     $('tags').replaceChildren();
     this.tags = [];
@@ -752,19 +802,23 @@ const stage = {
 
     if (this.exhibit) {
       this.world = eng.legacyEpisode(this.exhibit, 'sprint');
+      this.worlds = [this.world];
       this.actors.push(new Actor(this.world, 0));
     } else if (mode === 'watch') {
       const genome = this.ancestor >= 0 ? this.lineage()[this.ancestor].genome : elite.genome;
       this.world = eng.episode(genome, task, this.trial);
+      this.worlds = [this.world];
       this.actors.push(new Actor(this.world, 0));
     } else if (mode === 'fight') {
       // Two creatures, nose to nose on a raised ring, each told the
       // other is where it wants to go.
       this.world = eng.arena(RING);
+      this.worlds = [this.world];
       const me = { elite, task };
       const pair = this.swap ? [this.rivalFor(), me] : [me, this.rivalFor()];
-      pair.forEach((f, i) => {
-        const c = this.world.add(f.elite.genome, 0, 0, i === 0 ? -RING * 0.55 : RING * 0.55, i === 0 ? 0 : Math.PI);
+      pair.forEach((f, i) => this.world.add(f.elite.genome, 0, 0, i === 0 ? -RING * 0.55 : RING * 0.55, i === 0 ? 0 : Math.PI));
+      settle(this.world);
+      pair.forEach((f, c) => {
         // The selected creature keeps its own colour whichever corner it
         // is in; the rival moves away from it on the colour wheel if close.
         this.actors.push(new Actor(this.world, c, { avoidHue: f === me ? null : elite.genome.hue }));
@@ -776,7 +830,6 @@ const stage = {
       });
       this.focus = this.swap ? 1 : 0;
     } else {
-      this.world = eng.world(task, { trial: this.trial });
       let entries;
       if (mode === 'roam') {
         entries = [{ genome: elite.genome, tag: null }];
@@ -812,8 +865,17 @@ const stage = {
       entries.forEach((en, i) => {
         const x = (i - (n - 1) / 2) * gap;
         // Lanes run left to right as seen from behind the start line.
-        const c = this.world.add(en.genome, -x, 0, 0, 0);
-        this.actors.push(new Actor(this.world, c));
+        // Each runs down the middle of its own world, exactly where its
+        // trial ran, and is only drawn in its lane: even moving a creature
+        // sideways changes the arithmetic enough to trip a touchy gait.
+        // Rough ground is the exception, since a creature drawn off to
+        // the side would no longer match the hills under it.
+        const real = task === 'rough' && n > 1;
+        const w = eng.world(task, { trial: this.trial });
+        this.worlds.push(w);
+        w.add(en.genome, real ? -x : 0, 0, 0, 0);
+        settle(w);
+        this.actors.push(new Actor(w, 0, { dx: real ? 0 : -x }));
         if (en.tag) {
           const el = document.createElement('div');
           el.className = 'tag';
@@ -823,6 +885,7 @@ const stage = {
         }
         if (en.mine || (mode === 'line' && i === n - 1)) this.focus = i;
       });
+      this.world = this.worlds[0];
       lanes = { min: -((n - 1) / 2) * gap, max: ((n - 1) / 2) * gap };
       if (mode === 'roam' && task === 'chase') this.nextChaseGoal();
       if (mode === 'roam' && task === 'shove') {
@@ -936,7 +999,7 @@ const stage = {
         // rather than letting a backlog build.
         steps = Math.min(steps, 12);
         if (steps > 0) {
-          this.world.step(steps);
+          for (const w of this.worlds) w.step(steps);
           for (const a of this.actors) a.sync();
           syncCrates(this.world);
           this.after();
@@ -1668,7 +1731,7 @@ async function boot() {
     selectTask: showTask,
     // Step the simulation by hand (for filmstrips and tests).
     advance(steps) {
-      stage.world.step(steps);
+      for (const w of stage.worlds) w.step(steps);
       for (const a of stage.actors) a.sync();
       stage.after();
       stage.aim();
