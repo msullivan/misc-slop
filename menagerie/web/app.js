@@ -69,6 +69,12 @@ const TRIALS = { chase: 3, rough: 2 };
 const SECONDS = { sprint: 10, walk: 10, rough: 12, swim: 10, chase: 14, jump: 5, shove: 10 };
 const RING = 4; // sumo ring radius, metres
 const CRATE = { half: 0.4, mass: 80, gap: 0.6 };
+const LANE_GAP = 2.6; // between lanes of a race, metres
+// Under a race on rough ground, how much a metre along the course counts
+// against a metre across it when deciding whose ground a spot shows.
+const LANE_GROUND_STRETCH = 0.16;
+// ...beyond this many metres from any creature.
+const LANE_GROUND_NEAR = 1.5;
 
 // ------------------------------------------------------------------- names
 
@@ -225,9 +231,12 @@ function disposeGroup(group) {
 }
 
 let particles = null;
+// Rough ground under a race: see buildLaneGround.
+let laneGround = null;
 function buildHabitat(terrain, task, lanes) {
   disposeGroup(world3);
   particles = null;
+  laneGround = null;
   const water = terrain.kind === 'water';
   const bg = water ? theme.water : theme.sky;
   scene.background = bg.clone();
@@ -299,6 +308,10 @@ function buildHabitat(terrain, task, lanes) {
     far.position.y = -0.002;
     far.receiveShadow = true;
     world3.add(far);
+    if (lanes.at && lanes.at.length > 1) {
+      buildLaneGround(terrain, lanes.at);
+      return;
+    }
     const { nx, nz, size, centre, heights } = terrain;
     const g = new THREE.PlaneGeometry(size[0], size[1], nx - 1, nz - 1);
     g.rotateX(-Math.PI / 2);
@@ -373,11 +386,97 @@ function buildHabitat(terrain, task, lanes) {
   }
 }
 
-// Crates the creatures push around.
+/**
+ * Rough ground for several lanes at once. Every lane is the same course,
+ * simulated in a world of its own and drawn `at[k]` metres to the side, so
+ * the courses overlap on screen, and creatures do not keep to their lanes
+ * (five metres of sideways drift in a run is common). One sheet is drawn,
+ * and each point of it shows the course of whichever creature is nearest
+ * to it as drawn: whatever a creature is standing on is then its own
+ * ground, wherever it has wandered. The offsets must be whole numbers of
+ * grid cells, so that every lane's samples fall on the sheet's vertices.
+ */
+function buildLaneGround(terrain, at) {
+  const { nx, nz, size, centre, heights } = terrain;
+  const cell = size[0] / (nx - 1);
+  const lo = Math.min(...at);
+  const shift = at.map((dx) => Math.round((dx - lo) / cell));
+  const cols = nx + Math.max(...shift);
+  const g = new THREE.PlaneGeometry(1, 1, cols - 1, nz - 1);
+  g.rotateX(-Math.PI / 2);
+  const p = g.attributes.position;
+  const uv = g.attributes.uv;
+  const xs = new Float32Array(cols);
+  const zs = new Float32Array(nz);
+  for (let ix = 0; ix < cols; ix++) xs[ix] = centre[0] - size[0] / 2 + lo + ix * cell;
+  for (let iz = 0; iz < nz; iz++) zs[iz] = centre[1] + size[1] * (iz / (nz - 1) - 0.5);
+  for (let iz = 0; iz < nz; iz++) {
+    for (let ix = 0; ix < cols; ix++) {
+      // Rows run from -z to +z, as the simulator's do.
+      const i = iz * cols + ix;
+      p.setXYZ(i, xs[ix], 0, zs[iz]);
+      uv.setXY(i, xs[ix] / 5, zs[iz] / 5);
+    }
+  }
+  const mesh = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ map: gridTexture(), roughness: 0.95 }));
+  mesh.receiveShadow = true;
+  world3.add(mesh);
+  laneGround = { g, xs, zs, cols, nx, nz, heights, shift, owner: new Int8Array(cols * nz).fill(-1) };
+}
+
+function syncLaneGround(actors) {
+  const L = laneGround;
+  if (!L) return;
+  const { xs, zs, cols, nx, nz, heights, shift, owner } = L;
+  const p = L.g.attributes.position;
+  const n = actors.length;
+  let changed = false;
+  for (let iz = 0; iz < nz; iz++) {
+    for (let ix = 0; ix < cols; ix++) {
+      // Close to a creature, nearest means nearest. Further off, distance
+      // along the course counts for less than distance across it, so the
+      // ground ahead of a creature stays its own.
+      let who = 0;
+      let best = Infinity;
+      let close = -1;
+      let closest = LANE_GROUND_NEAR ** 2;
+      for (let k = 0; k < n; k++) {
+        const c = actors[k].com;
+        const across = (xs[ix] - c.x) ** 2;
+        const along = (zs[iz] - c.z) ** 2;
+        if (across + along < closest) {
+          closest = across + along;
+          close = k;
+        }
+        const d = across + LANE_GROUND_STRETCH * along;
+        if (d < best) {
+          best = d;
+          who = k;
+        }
+      }
+      if (close >= 0) who = close;
+      const i = iz * cols + ix;
+      if (owner[i] === who) continue;
+      owner[i] = who;
+      changed = true;
+      // Beyond the edge of its field a course is flat floor.
+      const sx = ix - shift[who];
+      p.setY(i, sx >= 0 && sx < nx ? heights[iz * nx + sx] : 0);
+    }
+  }
+  if (changed) {
+    p.needsUpdate = true;
+    L.g.computeVertexNormals();
+  }
+}
+
+// Crates the creatures push around: every crate of every world on show,
+// each drawn as far to the side as its world's creature is.
 const crates3 = new THREE.Group();
 scene.add(crates3);
-function syncCrates(world) {
-  const n = world ? world.crates : 0;
+function syncCrates(worlds, offsets) {
+  let n = 0;
+  for (const w of worlds) n += w.crates;
   while (crates3.children.length > n) {
     const m = crates3.children[crates3.children.length - 1];
     crates3.remove(m);
@@ -388,23 +487,26 @@ function syncCrates(world) {
     m.geometry.dispose();
     m.material.dispose();
   }
-  for (let i = 0; i < n; i++) {
-    const c = world.crate(i);
-    let m = crates3.children[i];
-    if (!m) {
-      m = new THREE.Mesh(
-        new THREE.BoxGeometry(c[7] * 2, c[8] * 2, c[9] * 2),
-        new THREE.MeshStandardMaterial({ color: theme.accent, roughness: 0.8 })
-      );
-      m.castShadow = true;
-      m.receiveShadow = true;
-      // Strapping, so it reads as a crate and its tumbling is visible.
-      const edges = new THREE.LineSegments(new THREE.EdgesGeometry(m.geometry), new THREE.LineBasicMaterial({ color: theme.ink }));
-      m.add(edges);
-      crates3.add(m);
+  let i = 0;
+  for (const [k, world] of worlds.entries()) {
+    for (let j = 0; j < world.crates; j++, i++) {
+      const c = world.crate(j);
+      let m = crates3.children[i];
+      if (!m) {
+        m = new THREE.Mesh(
+          new THREE.BoxGeometry(c[7] * 2, c[8] * 2, c[9] * 2),
+          new THREE.MeshStandardMaterial({ color: theme.accent, roughness: 0.8 })
+        );
+        m.castShadow = true;
+        m.receiveShadow = true;
+        // Strapping, so it reads as a crate and its tumbling is visible.
+        const edges = new THREE.LineSegments(new THREE.EdgesGeometry(m.geometry), new THREE.LineBasicMaterial({ color: theme.ink }));
+        m.add(edges);
+        crates3.add(m);
+      }
+      m.position.set(c[0] + (offsets[k] || 0), c[1], c[2]);
+      m.quaternion.set(c[3], c[4], c[5], c[6]);
     }
-    m.position.set(c[0], c[1], c[2]);
-    m.quaternion.set(c[3], c[4], c[5], c[6]);
   }
 }
 
@@ -424,6 +526,48 @@ const flag = new THREE.Group();
   flag.userData = { pole, cloth, ring };
   flag.visible = false;
   scene.add(flag);
+}
+
+// In a race each creature chases flags of its own, and they are planted
+// all over each other's lanes: a small pennant apiece in the creature's
+// colour, with a line along the ground from the creature to say whose.
+const laneFlags3 = new THREE.Group();
+scene.add(laneFlags3);
+function syncLaneFlags(actors) {
+  while (laneFlags3.children.length > actors.length) {
+    const f = laneFlags3.children[laneFlags3.children.length - 1];
+    laneFlags3.remove(f);
+    disposeGroup(f);
+  }
+  for (const [i, a] of actors.entries()) {
+    let f = laneFlags3.children[i];
+    if (!f) {
+      const col = new THREE.Color().setHSL(a.hue, 0.65, theme.dark ? 0.6 : 0.42);
+      const post = new THREE.Group();
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 1.2, 6), new THREE.MeshStandardMaterial({ color: 0x888888 }));
+      pole.position.y = 0.6;
+      const cloth = new THREE.Mesh(new THREE.PlaneGeometry(0.46, 0.3), new THREE.MeshBasicMaterial({ color: col, side: THREE.DoubleSide }));
+      cloth.position.set(0.25, 1.03, 0);
+      const ring = new THREE.Mesh(new THREE.RingGeometry(0.82, 0.9, 40), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.7 }));
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.y = 0.012;
+      post.add(pole, cloth, ring);
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
+      const line = new THREE.Line(g, new THREE.LineBasicMaterial({ color: col, transparent: true, opacity: 0.55 }));
+      line.frustumCulled = false;
+      f = new THREE.Group();
+      f.add(post, line);
+      f.userData = { post, line };
+      laneFlags3.add(f);
+    }
+    const { post, line } = f.userData;
+    post.position.set(a.goal[0], 0, a.goal[2]);
+    const p = line.geometry.attributes.position;
+    p.setXYZ(0, a.com.x, 0.02, a.com.z);
+    p.setXYZ(1, a.goal[0], 0.02, a.goal[2]);
+    p.needsUpdate = true;
+  }
 }
 
 // ------------------------------------------------------------------ actors
@@ -618,6 +762,8 @@ const cam = {
   yaw: 2.45,
   pitch: 0.36,
   snap: true,
+  // The viewer has zoomed by hand since the shot was last set up.
+  manual: false,
 };
 function updateCamera(dt) {
   const k = cam.snap ? 1 : 1 - Math.exp(-dt * 4.5);
@@ -666,6 +812,28 @@ function fitDistance(halfWidth) {
   return (1.06 * halfWidth * h) / (2 * halfPx * tanV);
 }
 
+/**
+ * Camera distance at which a creature on the ground at (x, z) is in the
+ * clear part of the picture: side to side as fitDistance has it, and top
+ * to bottom with room above for the creature, its tag and the readout.
+ */
+function reachDistance(x, z) {
+  const sp = Math.sin(cam.pitch);
+  const cp = Math.cos(cam.pitch);
+  const sy = Math.sin(cam.yaw);
+  const cy = Math.cos(cam.yaw);
+  // The spot relative to where the camera is to look: across the picture,
+  // up it, and away from the camera.
+  const rx = x - cam.want.x;
+  const ry = -cam.want.y;
+  const rz = z - cam.want.z;
+  const across = rx * cy - rz * sy;
+  const up = -rx * sp * sy + ry * cp - rz * sp * cy;
+  const away = -(rx * cp * sy + ry * sp + rz * cp * cy);
+  const tall = Math.abs(up) / ((up > 0 ? 0.55 : 0.7) * Math.tan((camera.fov * Math.PI) / 360));
+  return Math.max(tall, fitDistance(Math.abs(across) + LANE_GAP)) - away;
+}
+
 // Pointer: drag orbits, wheel and pinch zoom, a tap aims (in Roam).
 const pointers = new Map();
 let dragMoved = 0;
@@ -694,6 +862,7 @@ canvas.addEventListener('pointermove', (e) => {
     const [a, b] = [...pointers.values()];
     const d = Math.hypot(a[0] - b[0], a[1] - b[1]);
     if (pinch > 0) cam.wantDist = Math.min(60, Math.max(2, cam.wantDist * (pinch / d)));
+    cam.manual = true;
     pinch = d;
     dragMoved += 10;
   }
@@ -711,32 +880,44 @@ canvas.addEventListener(
   (e) => {
     e.preventDefault();
     cam.wantDist = Math.min(60, Math.max(2, cam.wantDist * Math.exp(e.deltaY * 0.0012)));
+    cam.manual = true;
   },
   { passive: false }
 );
 
 // ------------------------------------------------------------------- stage
 
-// The stage owns the simulated world on show and knows the four ways of
+// The stage owns the simulated world on show and knows the five ways of
 // looking at a creature.
 /**
  * Step an open world until its creatures have come to rest and its clock
  * has started, without drawing any of it: the same settling a scored trial
- * does before it begins.
+ * does before it begins. Returns how many steps that took.
  */
 function settle(world) {
-  let guard = 0;
-  do world.step(1);
-  while (world.time < 0 && guard++ < 400);
+  let n = 0;
+  do {
+    world.step(1);
+    n++;
+  } while (world.time < 0 && n <= 400);
+  return n;
 }
 
 const stage = {
   eng: null,
-  // Race and lineage give every creature a world of its own, stepped in
-  // lockstep: each then starts from exactly the pose its trial started
-  // from, which gaits turn out to be touchy about. `world` is the first.
+  // Race and lineage give every creature a scored trial of its own, all
+  // stepped in lockstep and each drawn in its lane: every creature then
+  // does exactly what it was scored doing, on its own course, with its
+  // own crate or flags. Gaits are touchy enough that nothing less works:
+  // sharing a world, or starting a few metres to the side, trips some.
+  // `world` is the first.
   worlds: [],
   world: null,
+  // How far to the side each world is drawn, and the span of the lanes.
+  offsets: [],
+  lanes: { min: 0, max: 0 },
+  // Who is in each lane: { genome, fitness, tag }.
+  entries: null,
   actors: [],
   tags: [],
   mode: 'watch',
@@ -765,11 +946,18 @@ const stage = {
     this.actors = [];
     for (const w of this.worlds) w.free();
     this.worlds = [];
+    this.offsets = [];
     this.world = null;
     $('tags').replaceChildren();
     this.tags = [];
     flag.visible = false;
-    syncCrates(null);
+    syncCrates([], []);
+    syncLaneFlags([]);
+  },
+
+  /** Is this a view of several scored trials side by side? */
+  get inLanes() {
+    return !this.exhibit && (this.mode === 'race' || this.mode === 'line');
   },
 
   /** Who the selected creature meets in the ring. */
@@ -791,6 +979,8 @@ const stage = {
     const elite = this.elite;
     if (!elite && !this.exhibit) return;
     let lanes = { min: 0, max: 0 };
+    let terrain = null;
+    this.entries = null;
     this.hold = 0;
     this.acc = 0;
     this.userGoal = false;
@@ -816,12 +1006,30 @@ const stage = {
       this.worlds = [this.world];
       const me = { elite, task };
       const pair = this.swap ? [this.rivalFor(), me] : [me, this.rivalFor()];
-      pair.forEach((f, i) => this.world.add(f.elite.genome, 0, 0, i === 0 ? -RING * 0.55 : RING * 0.55, i === 0 ? 0 : Math.PI));
+      const enter = (w, i) => w.add(pair[i].elite.genome, 0, 0, i === 0 ? -RING * 0.55 : RING * 0.55, i === 0 ? 0 : Math.PI);
+      // The ring's clock starts once everything in it is still, and a body
+      // kept standing longer than it took to come to rest alone may not
+      // stay standing: several walkers topple while waiting for a slow
+      // opponent, and then cannot walk. So time each one settling alone at
+      // its corner, and put the quicker one down late enough that both
+      // come to rest on the same step, each as it would have by itself.
+      const rest = pair.map((_, i) => {
+        const w = eng.arena(RING);
+        enter(w, i);
+        const n = settle(w);
+        w.free();
+        return n;
+      });
+      const first = rest[0] >= rest[1] ? 0 : 1;
+      enter(this.world, first);
+      if (rest[first] > rest[1 - first]) this.world.step(rest[first] - rest[1 - first]);
+      enter(this.world, 1 - first);
       settle(this.world);
-      pair.forEach((f, c) => {
+      pair.forEach((f, i) => {
         // The selected creature keeps its own colour whichever corner it
         // is in; the rival moves away from it on the colour wheel if close.
-        this.actors.push(new Actor(this.world, c, { avoidHue: f === me ? null : elite.genome.hue }));
+        // (Whoever went in first is the world's creature 0.)
+        this.actors.push(new Actor(this.world, i === first ? 0 : 1, { avoidHue: f === me ? null : elite.genome.hue }));
         const el = document.createElement('div');
         el.className = 'tag';
         el.textContent = nameOf(f.elite, f.task);
@@ -829,15 +1037,27 @@ const stage = {
         this.tags.push(el);
       });
       this.focus = this.swap ? 1 : 0;
+      this.faceOff();
+    } else if (mode === 'roam') {
+      // Let loose in an open world: no trial, no clock.
+      this.world = eng.world(task, { trial: this.trial });
+      this.worlds = [this.world];
+      this.world.add(elite.genome, 0, 0, 0, 0);
+      settle(this.world);
+      this.actors.push(new Actor(this.world, 0));
+      if (task === 'chase') this.nextChaseGoal();
+      if (task === 'shove') {
+        const z = this.world.front(0) + CRATE.gap + CRATE.half;
+        this.world.addCrate(0, CRATE.half + 0.01, z, CRATE.half, CRATE.mass);
+      }
     } else {
       let entries;
-      if (mode === 'roam') {
-        entries = [{ genome: elite.genome, tag: null }];
-      } else if (mode === 'line') {
+      if (mode === 'line') {
         const line = this.lineage();
         const picks = pickEvenly(line.length, stackedQuery.matches ? 5 : 7);
         entries = picks.map((i) => ({
           genome: line[i].genome,
+          fitness: line[i].fitness,
           tag: i === 0 ? 'founder' : i === line.length - 1 ? 'today' : `gen ${line[i].depth}`,
         }));
       } else {
@@ -856,52 +1076,49 @@ const stage = {
         top = [...top].sort((a, b) => b.fitness - a.fitness).slice(0, 8).reverse();
         entries = top.map((e) => ({
           genome: e.genome,
+          fitness: e.fitness,
           tag: e.family === undefined ? nameOf(e, task).split(' ')[0] : `${ROMAN[e.family]} · ${nameOf(e, task).split(' ')[0]}`,
           mine: e === elite,
         }));
       }
-      const gap = task === 'swim' ? 3.0 : 2.6;
+      // Every lane is the creature's own scored trial, already settled:
+      // it runs down the middle of its own world, exactly where it was
+      // scored, and is only drawn in its lane.
+      this.entries = entries;
+      this.worlds = entries.map((en) => eng.episode(en.genome, task, this.trial));
+      this.world = this.worlds[0];
+      terrain = this.world.terrain();
       const n = entries.length;
+      const gap = task === 'swim' ? 3.0 : LANE_GAP;
+      // On rough ground lanes sit a whole number of terrain cells apart
+      // (see buildLaneGround).
+      const cell = terrain.kind === 'heights' ? terrain.size[0] / (terrain.nx - 1) : 0;
+      const per = cell ? Math.round(gap / cell) : 0;
       entries.forEach((en, i) => {
-        const x = (i - (n - 1) / 2) * gap;
         // Lanes run left to right as seen from behind the start line.
-        // Each runs down the middle of its own world, exactly where its
-        // trial ran, and is only drawn in its lane: even moving a creature
-        // sideways changes the arithmetic enough to trip a touchy gait.
-        // Rough ground is the exception, since a creature drawn off to
-        // the side would no longer match the hills under it.
-        const real = task === 'rough' && n > 1;
-        const w = eng.world(task, { trial: this.trial });
-        this.worlds.push(w);
-        w.add(en.genome, real ? -x : 0, 0, 0, 0);
-        settle(w);
-        this.actors.push(new Actor(w, 0, { dx: real ? 0 : -x }));
-        if (en.tag) {
-          const el = document.createElement('div');
-          el.className = 'tag';
-          el.textContent = en.tag;
-          $('tags').append(el);
-          this.tags.push(el);
-        }
+        const x = cell ? (i * per - Math.floor(((n - 1) * per) / 2)) * cell : (i - (n - 1) / 2) * gap;
+        this.offsets.push(-x);
+        this.actors.push(new Actor(this.worlds[i], 0, { dx: -x }));
+        const el = document.createElement('div');
+        el.className = 'tag';
+        el.textContent = en.tag;
+        $('tags').append(el);
+        this.tags.push(el);
         if (en.mine || (mode === 'line' && i === n - 1)) this.focus = i;
       });
-      this.world = this.worlds[0];
-      lanes = { min: -((n - 1) / 2) * gap, max: ((n - 1) / 2) * gap };
-      if (mode === 'roam' && task === 'chase') this.nextChaseGoal();
-      if (mode === 'roam' && task === 'shove') {
-        const z = this.world.front(0) + CRATE.gap + CRATE.half;
-        this.world.addCrate(0, CRATE.half + 0.01, z, CRATE.half, CRATE.mass);
-      }
+      lanes = { min: Math.min(...this.offsets), max: Math.max(...this.offsets), at: this.offsets };
     }
+    this.lanes = lanes;
     if (mode === 'watch' || mode === 'roam') this.actors[0].addTrail(this.underwater);
-    syncCrates(this.world);
-    if (this.world.crates) this.crateStart = Float32Array.from(this.world.crate(0).subarray(0, 3));
+    if (mode === 'roam' && this.world.crates) this.crateStart = Float32Array.from(this.world.crate(0).subarray(0, 3));
 
-    buildHabitat(this.world.terrain(), mode === 'fight' ? 'sumo' : task, lanes);
+    buildHabitat(terrain || this.world.terrain(), mode === 'fight' ? 'sumo' : task, lanes);
+    this.props();
     const a = this.actors[this.focus];
     if (!keepCamera) {
+      cam.manual = false;
       const many = this.actors.length > 1;
-      cam.wantDist = many ? Math.max(10, fitDistance(lanes.max + 2.6)) : Math.max(2.4, a.radius * 4.4);
+      cam.wantDist = many ? Math.max(10, fitDistance((lanes.max - lanes.min) / 2 + LANE_GAP)) : Math.max(2.4, a.radius * 4.4);
       if (task === 'jump' && !many) cam.wantDist *= 1.25;
       cam.yaw = many ? 2.75 : 2.45;
       cam.pitch = many ? 0.62 : this.underwater ? 0.22 : 0.34;
@@ -956,15 +1173,33 @@ const stage = {
     if (this.mode === 'fight') {
       cam.want.set(0, 0.3, 0);
     } else if (this.actors.length > 1) {
-      // Frame the pack: track the leader down the course, stay centred across it.
+      // Frame the pack: stay centred across the lanes and whoever has
+      // strayed outside them, and far enough down the course to hold both
+      // the leader and the last (who, being nearer the camera, takes up
+      // more of the picture, hence the uneven weights).
       let lead = -1e9;
       let trailz = 1e9;
+      let left = this.lanes.min;
+      let right = this.lanes.max;
       for (const b of this.actors) {
         if (b.exploded) continue;
         lead = Math.max(lead, b.com.z);
         trailz = Math.min(trailz, b.com.z);
+        left = Math.min(left, b.com.x);
+        right = Math.max(right, b.com.x);
       }
-      cam.want.set(0, 0.6, lead * 0.6 + trailz * 0.4);
+      if (lead < trailz) lead = trailz = 0;
+      const z = lead * 0.4 + trailz * 0.6;
+      cam.want.set((left + right) / 2, 0.6, z);
+      // A pack that spreads widens the shot rather than leave it (a chase
+      // sends everyone seven metres off in a new direction every few
+      // seconds; a founder may never leave the line), unless the viewer
+      // has taken charge of the zoom.
+      if (!cam.manual) {
+        let need = 0;
+        for (const b of this.actors) if (!b.exploded) need = Math.max(need, reachDistance(b.com.x, b.com.z));
+        cam.wantDist = Math.max(cam.wantDist, Math.min(60, need));
+      }
     } else {
       cam.want.set(a.com.x, this.underwater ? a.com.y : Math.max(0.35, a.com.y), a.com.z);
       // Something that leaves the ground this far needs a wider shot.
@@ -986,7 +1221,8 @@ const stage = {
             selectElite(next);
             return;
           }
-          if (this.mode === 'watch') this.trial = (this.trial + 1) % (TRIALS[this.task] || 1);
+          // Trials come round in turn, here and in the lanes.
+          if (this.mode === 'watch' || this.inLanes) this.trial = (this.trial + 1) % (TRIALS[this.task] || 1);
           this.start({ keepCamera: true });
           cam.snap = true;
           return;
@@ -998,26 +1234,54 @@ const stage = {
         // A slow frame can't be made up later: drop what doesn't fit
         // rather than letting a backlog build.
         steps = Math.min(steps, 12);
-        if (steps > 0) {
-          for (const w of this.worlds) w.step(steps);
-          for (const a of this.actors) a.sync();
-          syncCrates(this.world);
-          this.after();
-        }
+        if (steps > 0) this.step(steps);
       }
     }
     this.aim();
     this.readout();
   },
 
+  /**
+   * Advance every world on show by the same number of steps. A trial that
+   * has ended (the bell, or a walker's fall) ignores further steps, so a
+   * lane that finishes early stands where it stopped while the rest run on.
+   */
+  step(steps) {
+    for (const w of this.worlds) w.step(steps);
+    for (const a of this.actors) a.sync();
+    this.props();
+    this.after();
+  },
+
+  /** Put everything that isn't a creature where the worlds say it is. */
+  props() {
+    syncCrates(this.worlds, this.offsets);
+    if (this.inLanes) {
+      if (this.task === 'chase') syncLaneFlags(this.actors);
+      syncLaneGround(this.actors);
+    }
+  },
+
+  /** The time on the clock: that of whichever world has run longest. */
+  clock() {
+    let t = -Infinity;
+    for (const w of this.worlds) t = Math.max(t, w.time);
+    return t;
+  },
+
+  /** Sumo: each is drawn to wherever the other is now. */
+  faceOff() {
+    const [A, B] = this.actors;
+    this.world.setGoal(A.c, B.com.x, B.com.y, B.com.z);
+    this.world.setGoal(B.c, A.com.x, A.com.y, A.com.z);
+  },
+
   /** Mode-specific bookkeeping after stepping. */
   after() {
     const { mode, task, world } = this;
-    const t = world.time - world.settle;
     if (mode === 'fight') {
       const [A, B] = this.actors;
-      world.setGoal(0, B.com.x, B.com.y, B.com.z);
-      world.setGoal(1, A.com.x, A.com.y, A.com.z);
+      this.faceOff();
       if (this.result === null) {
         const out = (a) => Math.hypot(a.com.x, a.com.z) > RING + 0.15 || a.com.y < -0.35 || a.exploded;
         const oa = out(A);
@@ -1051,21 +1315,23 @@ const stage = {
         const c = world.crate(0);
         world.setGoal(0, c[0], c[1], c[2]);
       }
-    } else if (t > SECONDS[task] + 1.5) {
+    } else if (this.worlds.every((w) => w.score().done)) {
+      // Every lane has finished: a pause on the result, then all again.
       this.hold = 2.2;
     }
     // Flag follows the focus creature's goal when it has a nearby one.
+    // (Lanes have a flag each: see syncLaneFlags.)
     const a = this.actors[this.focus];
     const g = a.goal;
     const near = Math.hypot(g[0] - a.com.x, g[2] - a.com.z) < 200;
-    flag.visible = near && (task === 'chase' || this.userGoal) && this.actors.length === 1;
+    flag.visible = near && (task === 'chase' || this.userGoal) && !this.inLanes;
     if (flag.visible) flag.position.set(g[0], this.underwater ? g[1] - 0.8 : 0, g[2]);
   },
 
   readout() {
     const { mode, task, world } = this;
     const a = this.actors[this.focus];
-    const t = Math.max(0, world.time - world.settle);
+    const t = Math.max(0, this.clock() - world.settle);
     const sp = Math.hypot(a.vel[0], a.vel[2], this.underwater ? a.vel[1] : 0);
     $('r1').textContent = `${t.toFixed(1)} s`;
     if (mode === 'watch') {
@@ -1093,17 +1359,26 @@ const stage = {
         el.classList.toggle('out', r !== null && r !== 'draw' && r !== i);
       });
     } else {
+      // Whoever is ahead by the habitat's own measure: metres gained on
+      // the flags, metres the crate has gone, height cleared.
       $('r2k').textContent = 'leader';
       let lead = 0;
-      let who = 0;
-      this.actors.forEach((b, i) => {
-        if (!b.exploded && b.com.z > lead) {
-          lead = b.com.z;
+      let who = -1;
+      const early = [];
+      this.worlds.forEach((w, i) => {
+        const s = w.score();
+        // Stopped before the bell: a walker that fell, or a blow-up.
+        early.push(s.done && w.time < s.seconds - 0.5 * DT);
+        if (!this.actors[i].exploded && s.progress > lead) {
+          lead = s.progress;
           who = i;
         }
       });
-      $('r2').textContent = `${lead.toFixed(1)} m`;
-      this.tags.forEach((el, i) => el.classList.toggle('lead', i === who));
+      $('r2').textContent = `${lead.toFixed(task === 'jump' ? 2 : 1)} m`;
+      this.tags.forEach((el, i) => {
+        el.classList.toggle('lead', i === who);
+        el.classList.toggle('fell', early[i]);
+      });
     }
     $('r3').textContent = `${sp.toFixed(2)} m/s`;
     // Lane tags.
@@ -1458,6 +1733,13 @@ const HINTS = {
   exhibit:
     'It paddles on the spot for seven seconds, then a bug in the physics engine’s rounded boxes fires it into the air, timed to land as the clock runs out. Evolution found the bug before I did. Boxes are square now, sudden launches are thrown out, and every winner has to do it twice.',
 };
+// What needs saying about lanes where each creature's trial has props of
+// its own.
+const LANE_NOTES = {
+  rough: 'All run the same course; the ground drawn at any spot is the nearest creature’s.',
+  chase: 'Each has flags of its own, in its own colour.',
+  shove: 'Each has a crate of its own.',
+};
 function setMode(mode) {
   if (stage.exhibit) mode = 'watch';
   stage.mode = mode;
@@ -1473,6 +1755,7 @@ function setMode(mode) {
   if (mode === 'race' && stage.archive.racers && stage.archive.racers()) {
     hint = 'Each family’s champion on one start line. The families never met, so each found its own way.';
   }
+  if ((mode === 'race' || mode === 'line') && LANE_NOTES[stage.task]) hint += ' ' + LANE_NOTES[stage.task];
   if (mode === 'roam' && stage.task === 'shove') hint = 'Let loose with no clock and a crate to bully. Click the ground to send it somewhere else.';
   if (mode === 'roam' && stage.task === 'swim') hint = 'Let loose with no clock. Click anywhere in the water to give it somewhere to go.';
   if (mode === 'roam' && stage.task === 'chase') hint = 'Flags keep coming, with no clock. Click the ground to plant one yourself.';
@@ -1727,13 +2010,11 @@ async function boot() {
   new MutationObserver(retheme).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
   // Debug/automation hook.
   window.menagerie = {
-    stage, cam, zoo, showTask, selectElite, setMode, setSource, showCheat, toggleBreeding, nursery,
+    stage, cam, zoo, renderer, showTask, selectElite, setMode, setSource, showCheat, toggleBreeding, nursery,
     selectTask: showTask,
     // Step the simulation by hand (for filmstrips and tests).
     advance(steps) {
-      for (const w of stage.worlds) w.step(steps);
-      for (const a of stage.actors) a.sync();
-      stage.after();
+      stage.step(steps);
       stage.aim();
       cam.snap = true;
       updateCamera(0);

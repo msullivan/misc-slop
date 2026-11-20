@@ -25,7 +25,9 @@ await page.goto(url);
 await page.waitForFunction(() => window.menagerie, null, { timeout: 30000 });
 if (js) await page.evaluate(js);
 // Drive the sim clock ourselves: software GL is far slower than real time.
-const simTime = () => page.evaluate(() => window.menagerie.stage.world.time);
+// (The stage's clock, not the first world's: in Race and Lineage a lane
+// that has finished early stops counting.)
+const simTime = () => page.evaluate(() => window.menagerie.stage.clock());
 for (const t of at) {
   for (let i = 0; i < 600; i++) {
     if ((await simTime()) >= t) break;

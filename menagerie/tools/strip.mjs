@@ -45,7 +45,11 @@ const info = await page.evaluate(async ({ task, cell, rank, mode, yaw, pitch, di
   m.setMode(mode);
   if (yaw !== null) m.cam.yaw = yaw;
   if (pitch !== null) m.cam.pitch = pitch;
-  if (dist !== null) m.cam.wantDist = dist;
+  if (dist !== null) {
+    m.cam.wantDist = dist;
+    // Or the lanes' own framing would pull back to fit the whole pack.
+    m.cam.manual = true;
+  }
   return { fitness: e.fitness, cell: e.cell, parts: e.eval.parts, name: document.getElementById('binomial').textContent };
 }, {
   task, cell: opt('cell', null), rank: Number(opt('rank', 0)), mode, trial: Number(opt('trial', 0)),

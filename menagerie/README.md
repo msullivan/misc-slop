@@ -132,3 +132,5 @@ Useful while poking at it:
     menagerie evolve --task walk --islands 6 --evals 600000 --out runs/walk.json
     menagerie diag sprint genome.json 0 60   # per-step trace of one creature
     node tools/strip.mjs out.png --task walk --from 3 --every 0.1 --frames 9
+    node tools/racecheck.mjs                 # every race and lineage lane matches its recorded score
+    node tools/regress.mjs                   # click through every habitat and view; no errors
