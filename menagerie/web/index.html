@@ -75,6 +75,8 @@
 
 [hidden] { display: none !important; }
 html, body { height: 100%; margin: 0; }
+/* Phones in landscape otherwise inflate some of the text and not the rest. */
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 body {
   background: var(--bg);
   color: var(--ink);
@@ -84,6 +86,8 @@ body {
   overflow: hidden;
 }
 button { font: inherit; color: inherit; }
+/* No double-tap zoom on controls: the second of two quick taps should count. */
+button, summary, input { touch-action: manipulation; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 #app { position: relative; height: 100%; }
@@ -103,6 +107,13 @@ button { font: inherit; color: inherit; }
 .tag.lead { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 .tag.out { opacity: .55; text-decoration: line-through; }
 .tag.fell { opacity: .55; }
+/* On a narrow stage tags are cut down to a few characters and may be nudged
+   off their creature to stay clear of each other (see placeTags in app.js),
+   so each carries its creature's colour. */
+#tags.compact .tag { padding: 1px 5px 1px 4px; border-left: 4px solid var(--chip, var(--line)); }
+/* The specimen's name, on the stage while its label is scrolled out of sight
+   (stacked layout only). */
+#caption { display: none; }
 
 .panel {
   box-sizing: border-box;
@@ -220,20 +231,79 @@ dl#stats dd { margin: 0; font-family: var(--data); font-size: 15px; font-weight:
 
 @media (max-width: 760px), (max-height: 520px) {
   body { overflow: auto; }
-  #app { height: auto; min-height: 100%; display: flex; flex-direction: column; }
-  #stage { position: sticky; top: env(safe-area-inset-top, 0px); height: 52svh; flex: none; z-index: 2; border-bottom: 1px solid var(--line); }
+  /* Where there is a notch or status bar to stay below, the stage starts
+     below it (the padding) and is held below it (its `top`), and nothing
+     shows scrolling past in the strip above (the ::before). */
+  #app { height: auto; min-height: 100%; display: flex; flex-direction: column; box-sizing: border-box; padding-top: env(safe-area-inset-top, 0px); }
+  /* Half the screen: on a phone with its browser bars showing, that leaves
+     the whole label on the first screen, or the fold cutting through it. */
+  #stage { position: sticky; top: env(safe-area-inset-top, 0px); height: 50vh; height: 50svh; flex: none; z-index: 2; border-bottom: 1px solid var(--line); }
+  #stage::before { content: ""; position: absolute; left: 0; right: 0; bottom: 100%; height: env(safe-area-inset-top, 0px); background: var(--bg); }
   #tags { height: 100%; }
-  .panel { position: static; width: auto; border-radius: 0; border-width: 0 0 1px; backdrop-filter: none; background: var(--panel);
-    padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
-  #drawer { max-height: none; order: 3; width: auto; }
-  #label { order: 2; width: auto; }
+  .panel { position: static; width: auto; border-radius: 0; border-width: 0 0 1px; backdrop-filter: none; background: var(--panel); }
+  /* (By id: the panels' own padding rules are by id and would win.) */
+  #drawer, #label { padding-left: max(14px, env(safe-area-inset-left, 0px)); padding-right: max(14px, env(safe-area-inset-right, 0px)); }
+  #drawer { max-height: none; order: 3; width: auto; padding-bottom: max(12px, env(safe-area-inset-bottom, 0px)); }
+  #label { order: 2; width: auto; padding-top: 10px; padding-bottom: 10px; gap: 8px; }
   /* The readout rides on the stage, so it stays put while the panels scroll. */
   #readout { position: absolute; top: 8px; right: max(16px, env(safe-area-inset-right, 0px)); width: auto;
+    box-sizing: border-box; max-width: calc(100% - 16px - max(16px, env(safe-area-inset-right, 0px)));
     border: 1px solid var(--line); border-radius: 6px; padding: 5px 9px; gap: 12px; }
-  #readout b { font-size: 14px; }
+  #readout div { min-width: 0; }
+  #readout b { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #caption {
+    display: block; position: absolute; left: max(8px, env(safe-area-inset-left, 0px)); bottom: 8px;
+    box-sizing: border-box; max-width: calc(100% - 16px); padding: 2px 8px 3px;
+    background: color-mix(in srgb, var(--panel) 92%, transparent); border: 1px solid var(--line); border-radius: 6px;
+    font-family: var(--data); font-size: 11px; color: var(--muted);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none;
+  }
+  #caption i { font-family: var(--name); font-size: 16px; color: var(--ink); margin-right: 6px; }
+  /* The page is taller than the screen here, and the stage sits above the
+     panels: keep the loading and error message on the screen and on top. */
+  #loading { position: fixed; z-index: 3; }
+  /* The smallest labels are a size too small at arm's length. */
+  .eyebrow, #legend { font-size: 11px; }
+  dl#stats dt { font-size: 10.5px; }
 }
-@media (max-height: 520px) and (min-width: 761px) {
-  #stage { height: 72svh; }
+/* A phone on its side is too short to stack: 3D view on the left at full
+   height, the panels in a column beside it that scrolls under the thumb. */
+@media (max-height: 520px) and (min-width: 560px) {
+  #app { display: grid; grid-template-columns: minmax(0, 1fr) clamp(300px, 45%, 380px); grid-template-rows: auto 1fr; padding-top: 0; }
+  #stage { grid-column: 1; grid-row: 1 / 3; align-self: start; top: 0; height: 100vh; height: 100svh; border-bottom: 0; border-right: 1px solid var(--line); }
+  #stage::before { content: none; }
+  #label { grid-column: 2; grid-row: 1; padding-left: 14px; }
+  #drawer { grid-column: 2; grid-row: 2; padding-left: 14px; }
+  #readout { right: 8px; max-width: calc(100% - 16px - env(safe-area-inset-left, 0px)); }
+}
+@media (max-height: 520px) and (min-width: 560px) and (max-width: 779px) {
+  #habitats { grid-template-columns: repeat(4, 1fr); }
+}
+@media (max-width: 349px) {
+  #habitats { grid-template-columns: repeat(4, 1fr); }
+}
+/* Fingers: everything pressable gets a target a thumb can hit. */
+@media (pointer: coarse) {
+  #stage { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  #stage canvas { -webkit-tap-highlight-color: transparent; }
+  #sources button { padding: 10px 6px; }
+  #habitats { gap: 4px; }
+  #habitats button { padding: 11px 0; }
+  #families { gap: 4px; margin: 8px 0; }
+  #families button { flex: 1; min-width: 36px; padding: 9px 0; font-size: 12px; }
+  #modes button { padding: 11px 2px; }
+  #transport button { padding: 9px 10px; min-width: 44px; }
+  #gen input { height: 32px; margin: 0; }
+  #breedgo { padding: 11px 10px; }
+  #cheat { padding: 9px 0; }
+  #about summary { padding: 9px 0; }
+  /* Thirteen columns on a phone leave squares a thumb can barely find:
+     give the map the gutter the axis label had, and make the squares tall. */
+  #mapwrap.wide { grid-template-columns: 1fr; grid-template-rows: auto; }
+  #mapwrap.wide #yaxis { writing-mode: horizontal-tb; transform: none; text-align: left; }
+  #mapwrap.wide #yaxis::before { content: "\2191  "; }
+  #mapwrap.wide #xaxis { grid-column: 1; }
+  #mapwrap.wide #map button { aspect-ratio: 4 / 5; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
@@ -242,6 +312,7 @@ dl#stats dd { margin: 0; font-family: var(--data); font-size: 15px; font-weight:
   <div id="stage">
     <canvas id="view" aria-label="3D view of the selected creature"></canvas>
     <div id="tags"></div>
+    <div id="caption" aria-hidden="true" hidden></div>
     <section class="panel" id="readout" aria-live="off">
       <div><span id="r1k">time</span><b id="r1">0.0 s</b></div>
       <div><span id="r2k">distance</span><b id="r2">0.00 m</b></div>

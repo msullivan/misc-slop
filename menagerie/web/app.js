@@ -75,6 +75,13 @@ const LANE_GAP = 2.6; // between lanes of a race, metres
 const LANE_GROUND_STRETCH = 0.16;
 // ...beyond this many metres from any creature.
 const LANE_GROUND_NEAR = 1.5;
+// A stage narrower than this (a phone's) has no room for six names side by
+// side: lane tags are cut down to a few characters (see placeTags).
+const TAG_COMPACT = 600;
+// How far, in CSS pixels, a fingertip may stray and still have tapped.
+const TOUCH_SLOP = 10;
+// Fingers, not a mouse.
+const coarseQuery = matchMedia('(pointer: coarse)');
 
 // ------------------------------------------------------------------- names
 
@@ -830,7 +837,10 @@ function reachDistance(x, z) {
   const across = rx * cy - rz * sy;
   const up = -rx * sp * sy + ry * cp - rz * sp * cy;
   const away = -(rx * cp * sy + ry * sp + rz * cp * cy);
-  const tall = Math.abs(up) / ((up > 0 ? 0.55 : 0.7) * Math.tan((camera.fov * Math.PI) / 360));
+  // The room above is a share of the picture, but a tag and the readout are
+  // a fixed number of pixels: on a stage shorter than 400 px, leave more.
+  const above = Math.min(0.55, Math.max(0.2, 1 - 180 / (canvas.clientHeight || 400)));
+  const tall = Math.abs(up) / ((up > 0 ? above : 0.7) * Math.tan((camera.fov * Math.PI) / 360));
   return Math.max(tall, fitDistance(Math.abs(across) + LANE_GAP)) - away;
 }
 
@@ -838,10 +848,18 @@ function reachDistance(x, z) {
 const pointers = new Map();
 let dragMoved = 0;
 let pinch = 0;
+// For touch: where the finger went down, the furthest it has been from
+// there since, and whether a second finger has joined it.
+let downAt = [0, 0];
+let strayed = 0;
+let fingers = 0;
 canvas.addEventListener('pointerdown', (e) => {
   canvas.setPointerCapture(e.pointerId);
   pointers.set(e.pointerId, [e.clientX, e.clientY]);
   dragMoved = 0;
+  downAt = [e.clientX, e.clientY];
+  strayed = 0;
+  fingers = pointers.size === 1 ? 1 : Math.max(fingers, pointers.size);
   if (pointers.size === 2) {
     const [a, b] = [...pointers.values()];
     pinch = Math.hypot(a[0] - b[0], a[1] - b[1]);
@@ -856,6 +874,7 @@ canvas.addEventListener('pointermove', (e) => {
   pointers.set(e.pointerId, [e.clientX, e.clientY]);
   if (pointers.size === 1) {
     dragMoved += Math.abs(dx) + Math.abs(dy);
+    strayed = Math.max(strayed, Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]));
     cam.yaw -= dx * 0.006;
     cam.pitch = Math.min(1.45, Math.max(stage.underwater ? -1.2 : 0.04, cam.pitch + dy * 0.005));
   } else if (pointers.size === 2) {
@@ -871,7 +890,11 @@ function endPointer(e) {
   if (!pointers.has(e.pointerId)) return;
   pointers.delete(e.pointerId);
   canvas.classList.remove('dragging');
-  if (dragMoved < 6 && e.type === 'pointerup') stage.tap(e);
+  // A mouse click is a press that did not move. A fingertip always moves a
+  // little, back and forth: a touch is a tap if it ended near where it
+  // began, and was one finger throughout (not the end of a pinch).
+  const tapped = e.pointerType === 'touch' ? strayed < TOUCH_SLOP && fingers === 1 : dragMoved < 6;
+  if (tapped && e.type === 'pointerup') stage.tap(e);
 }
 canvas.addEventListener('pointerup', endPointer);
 canvas.addEventListener('pointercancel', endPointer);
@@ -1030,11 +1053,10 @@ const stage = {
         // is in; the rival moves away from it on the colour wheel if close.
         // (Whoever went in first is the world's creature 0.)
         this.actors.push(new Actor(this.world, i === first ? 0 : 1, { avoidHue: f === me ? null : elite.genome.hue }));
-        const el = document.createElement('div');
-        el.className = 'tag';
-        el.textContent = nameOf(f.elite, f.task);
-        $('tags').append(el);
-        this.tags.push(el);
+        // Short form: the genus, or "H. asper" where both are one genus.
+        const [genus, species] = nameOf(f.elite, f.task).split(' ');
+        const other = nameOf(pair[1 - i].elite, pair[1 - i].task).split(' ')[0];
+        this.addTag(`${genus} ${species}`, genus === other ? `${genus[0]}. ${species}` : genus, false);
       });
       this.focus = this.swap ? 1 : 0;
       this.faceOff();
@@ -1078,6 +1100,10 @@ const stage = {
           genome: e.genome,
           fitness: e.fitness,
           tag: e.family === undefined ? nameOf(e, task).split(' ')[0] : `${ROMAN[e.family]} · ${nameOf(e, task).split(' ')[0]}`,
+          // On a narrow stage: the family's numeral. With no families
+          // there is nothing short to call it, so past three lanes it gets
+          // no tag unless it leads or is the one selected.
+          short: e.family !== undefined ? ROMAN[e.family] : top.length > 3 ? '' : undefined,
           mine: e === elite,
         }));
       }
@@ -1099,11 +1125,7 @@ const stage = {
         const x = cell ? (i * per - Math.floor(((n - 1) * per) / 2)) * cell : (i - (n - 1) / 2) * gap;
         this.offsets.push(-x);
         this.actors.push(new Actor(this.worlds[i], 0, { dx: -x }));
-        const el = document.createElement('div');
-        el.className = 'tag';
-        el.textContent = en.tag;
-        $('tags').append(el);
-        this.tags.push(el);
+        this.addTag(en.tag, en.short ?? en.tag, en.mine);
         if (en.mine || (mode === 'line' && i === n - 1)) this.focus = i;
       });
       lanes = { min: Math.min(...this.offsets), max: Math.max(...this.offsets), at: this.offsets };
@@ -1118,12 +1140,11 @@ const stage = {
     if (!keepCamera) {
       cam.manual = false;
       const many = this.actors.length > 1;
-      cam.wantDist = many ? Math.max(10, fitDistance((lanes.max - lanes.min) / 2 + LANE_GAP)) : Math.max(2.4, a.radius * 4.4);
+      cam.wantDist = many ? this.packDistance() : Math.max(2.4, a.radius * 4.4);
       if (task === 'jump' && !many) cam.wantDist *= 1.25;
       cam.yaw = many ? 2.75 : 2.45;
       cam.pitch = many ? 0.62 : this.underwater ? 0.22 : 0.34;
       if (mode === 'fight') {
-        cam.wantDist = Math.max(11, fitDistance(RING + 0.7));
         cam.yaw = 1.2;
         cam.pitch = 0.42;
       }
@@ -1131,6 +1152,35 @@ const stage = {
     }
     this.aim();
     canvas.classList.toggle('aiming', mode === 'roam');
+  },
+
+  /** A tag for the creature just added: its full text, and what a narrow stage shows. */
+  addTag(full, short, mine) {
+    const el = document.createElement('div');
+    el.className = 'tag';
+    el.textContent = full;
+    el.dataset.full = full;
+    el.dataset.short = short;
+    if (mine) el.dataset.mine = '1';
+    const hue = this.actors[this.tags.length].hue;
+    el.style.setProperty('--chip', new THREE.Color().setHSL(hue, 0.62, theme.dark ? 0.6 : 0.48).getStyle());
+    $('tags').append(el);
+    this.tags.push(el);
+  },
+
+  /** Camera distance that takes in the lanes, or the ring. */
+  packDistance() {
+    if (this.mode === 'fight') return Math.max(11, fitDistance(RING + 0.7));
+    return Math.max(10, fitDistance((this.lanes.max - this.lanes.min) / 2 + LANE_GAP));
+  },
+
+  /**
+   * The stage has changed shape under a pack (a phone turned on its side):
+   * frame it afresh, unless the viewer has taken charge of the zoom. aim()
+   * widens the shot again from here if the pack has spread.
+   */
+  refit() {
+    if (this.actors.length > 1 && !cam.manual) cam.wantDist = this.packDistance();
   },
 
   lineage() {
@@ -1352,7 +1402,7 @@ const stage = {
         const edge = Math.min(...this.actors.map((b) => RING - Math.hypot(b.com.x, b.com.z)));
         $('r2').textContent = `${Math.max(0, edge).toFixed(1)} m`;
       } else {
-        $('r2').textContent = r === 'draw' ? 'draw' : `${this.tags[r].textContent.split(' ')[0]} wins`;
+        $('r2').textContent = r === 'draw' ? 'draw' : `${this.tags[r].dataset.full.split(' ')[0]} wins`;
       }
       this.tags.forEach((el, i) => {
         el.classList.toggle('lead', r === i);
@@ -1381,26 +1431,99 @@ const stage = {
       });
     }
     $('r3').textContent = `${sp.toFixed(2)} m/s`;
-    // Lane tags.
-    if (this.tags.length) {
-      const w = canvas.clientWidth;
-      const h = canvas.clientHeight;
-      this.actors.forEach((b, i) => {
-        const el = this.tags[i];
-        if (!el) return;
-        _v.copy(b.com);
-        _v.y += b.size * 1.1 + 0.35;
-        _v.project(camera);
-        const vis = _v.z < 1 && Math.abs(_v.x) < 1.1 && Math.abs(_v.y) < 1.1;
-        el.style.display = vis ? '' : 'none';
-        if (vis) {
-          el.style.left = `${((_v.x + 1) / 2) * w}px`;
-          el.style.top = `${((1 - _v.y) / 2) * h}px`;
+    if (this.tags.length) this.placeTags();
+  },
+
+  /**
+   * Put each tag over its creature, then keep them legible: inside the
+   * stage, clear of the readout and of each other. One that would land on
+   * another is moved up until it is clear (down, if there is no room up).
+   * The leader's goes down first, so it is the one that stays put.
+   *
+   * A narrow stage also gets the short form of every tag but the leader's
+   * and the selected creature's, and a tag with no short form is left out.
+   */
+  placeTags() {
+    const w = canvas.clientWidth;
+    const h = canvas.clientHeight;
+    const compact = w < TAG_COMPACT;
+    const box = $('tags');
+    if (box.classList.contains('compact') !== compact) {
+      box.classList.toggle('compact', compact);
+      tagEpoch++;
+    }
+    const EDGE = 3;
+    const PAD = 2;
+    // The readout only changes size when its text changes length.
+    const roKey = `${tagEpoch}|${w}|${$('r1').textContent.length}|${$('r2k').textContent}|${$('r2').textContent.length}|${$('r3').textContent.length}`;
+    if (this.roKey !== roKey) {
+      const ro = $('readout');
+      this.roKey = roKey;
+      this.roBox = { l: ro.offsetLeft, t: ro.offsetTop, r: ro.offsetLeft + ro.offsetWidth, b: ro.offsetTop + ro.offsetHeight };
+    }
+    const placed = [this.roBox];
+    const want = [];
+    this.actors.forEach((b, i) => {
+      const el = this.tags[i];
+      if (!el) return;
+      _v.copy(b.com);
+      _v.y += b.size * 1.1 + 0.35;
+      _v.project(camera);
+      const lead = el.classList.contains('lead');
+      const text = !compact || lead || el.dataset.mine ? el.dataset.full : el.dataset.short;
+      const vis = !!text && _v.z < 1 && Math.abs(_v.x) < 1.1 && Math.abs(_v.y) < 1.1;
+      el.style.display = vis ? '' : 'none';
+      if (!vis) return;
+      if (el.textContent !== text) el.textContent = text;
+      // Measuring forces a layout, so only when the words have changed.
+      const key = `${tagEpoch}|${text}`;
+      if (el.dataset.sized !== key) {
+        el.dataset.sized = key;
+        el.dataset.w = el.offsetWidth;
+        el.dataset.h = el.offsetHeight;
+      }
+      want.push({ el, lead, i, x: ((_v.x + 1) / 2) * w, y: ((1 - _v.y) / 2) * h, w: Number(el.dataset.w), h: Number(el.dataset.h) });
+    });
+    want.sort((a, b) => b.lead - a.lead || a.i - b.i);
+    for (const t of want) {
+      // (x, y) is the middle of the tag's bottom edge.
+      const x = Math.min(Math.max(t.x, EDGE + t.w / 2), Math.max(EDGE + t.w / 2, w - EDGE - t.w / 2));
+      const y0 = Math.min(Math.max(t.y, EDGE + t.h), Math.max(EDGE + t.h, h - EDGE));
+      const l = x - t.w / 2;
+      const r = x + t.w / 2;
+      // (The slack is for rounding: a tag put exactly PAD clear of another
+      // must not then count as touching it.)
+      const blocker = (y) => placed.find((p) => l < p.r + PAD - 0.01 && r > p.l - PAD + 0.01 && y - t.h < p.b + PAD - 0.01 && y > p.t - PAD + 0.01);
+      let y = y0;
+      let hit = blocker(y);
+      for (let n = 0; hit && n < placed.length; n++) {
+        y = hit.t - PAD;
+        hit = blocker(y);
+      }
+      if (hit || y - t.h < EDGE) {
+        y = y0;
+        hit = blocker(y);
+        for (let n = 0; hit && n < placed.length; n++) {
+          y = hit.b + PAD + t.h;
+          hit = blocker(y);
         }
-      });
+        // Nowhere clear: where it belongs, overlap and all.
+        if (hit || y > h - EDGE) y = y0;
+      }
+      placed.push({ l, r, t: y - t.h, b: y });
+      t.el.style.left = `${x}px`;
+      t.el.style.top = `${y}px`;
     }
   },
 };
+
+// Bumped whenever tags may have changed size without changing their words:
+// the web font arriving, or the stage going between narrow and wide.
+let tagEpoch = 0;
+if (document.fonts) {
+  document.fonts.addEventListener('loadingdone', () => tagEpoch++);
+  document.fonts.ready.then(() => tagEpoch++);
+}
 
 function pickEvenly(n, max) {
   if (n <= max) return [...Array(n).keys()];
@@ -1616,6 +1739,9 @@ function renderMap() {
   if (map.children.length !== dx.bins * dy.bins || map.dataset.cols !== String(dx.bins)) {
     map.dataset.cols = String(dx.bins);
     map.style.gridTemplateColumns = `repeat(${dx.bins}, 1fr)`;
+    // More columns than a thumb can pick between at full size on a phone:
+    // the stylesheet gives such a map more room on touch screens.
+    $('mapwrap').classList.toggle('wide', dx.bins > 10);
     const cells = [];
     for (let y = dy.bins - 1; y >= 0; y--) {
       for (let x = 0; x < dx.bins; x++) {
@@ -1689,12 +1815,42 @@ function setStats(rows) {
   );
 }
 
+/**
+ * In the stacked layout the specimen's label scrolls away under the stage
+ * while the map it is chosen from is on screen: name whoever is on show on
+ * the stage itself for as long as the label's own name is out of sight.
+ */
+function setCaption(name, note) {
+  const cap = $('caption');
+  if (name) {
+    const i = document.createElement('i');
+    i.textContent = name;
+    cap.replaceChildren(i, note);
+  } else cap.replaceChildren();
+  showCaption();
+}
+function showCaption() {
+  const cap = $('caption');
+  if (!stackedQuery.matches || !cap.firstChild) {
+    cap.hidden = true;
+    return;
+  }
+  const st = $('stage').getBoundingClientRect();
+  const name = $('binomial').getBoundingClientRect();
+  // Stacked, the label passes under the stage; side by side, off the top.
+  const edge = st.right < innerWidth - 40 ? 0 : st.bottom;
+  cap.hidden = name.bottom > edge + 4 && name.top < innerHeight;
+}
+addEventListener('scroll', showCaption, { passive: true });
+addEventListener('resize', showCaption);
+
 function describe() {
   const e = stage.elite;
   const task = stage.task;
   const H = HABITATS[task];
   const modes = ['m-watch', 'm-roam', 'm-line', 'm-race', 'm-fight'];
   if (stage.exhibit) {
+    setCaption('Tetrabates fraudator', 'disqualified');
     $('tagline').textContent = 'Disqualified';
     $('binomial').textContent = 'Tetrabates fraudator';
     $('common').textContent = 'the catapult: an early sprint “champion”, 17.7 m';
@@ -1703,6 +1859,7 @@ function describe() {
     return;
   }
   if (!e) {
+    setCaption(null);
     $('tagline').textContent = `${H.title}, bred here`;
     $('binomial').textContent = 'Nothing alive yet';
     $('common').textContent = 'Start breeding and the first survivors turn up within seconds.';
@@ -1714,6 +1871,7 @@ function describe() {
   $('tagline').textContent = e === best ? `${H.title} champion` : `${H.title} specimen`;
   $('binomial').textContent = nameOf(e, task);
   $('common').textContent = commonOf(e, task);
+  setCaption(nameOf(e, task), `${e.fitness.toFixed(2)} ${H.unit}`);
   const rate = task === 'jump' ? null : e.fitness / SECONDS[task];
   setStats([
     ['score', `${e.fitness.toFixed(2)} ${H.unit}`],
@@ -1725,9 +1883,11 @@ function describe() {
   $('m-fight').disabled = !stage.hasRival();
 }
 
+// What pointing at the ground is called here.
+const PRESS = coarseQuery.matches ? 'Tap' : 'Click';
 const HINTS = {
   watch: 'The exact trial it was scored on, replayed step for step.',
-  roam: 'Let loose with no clock. Click the ground to plant a flag and see whether it can steer.',
+  roam: `Let loose with no clock. ${PRESS} the ground to plant a flag and see whether it can steer.`,
   line: 'Its ancestors side by side, founder to today, all starting together.',
   race: 'The best from each row of the map on one start line.',
   exhibit:
@@ -1756,9 +1916,9 @@ function setMode(mode) {
     hint = 'Each family’s champion on one start line. The families never met, so each found its own way.';
   }
   if ((mode === 'race' || mode === 'line') && LANE_NOTES[stage.task]) hint += ' ' + LANE_NOTES[stage.task];
-  if (mode === 'roam' && stage.task === 'shove') hint = 'Let loose with no clock and a crate to bully. Click the ground to send it somewhere else.';
-  if (mode === 'roam' && stage.task === 'swim') hint = 'Let loose with no clock. Click anywhere in the water to give it somewhere to go.';
-  if (mode === 'roam' && stage.task === 'chase') hint = 'Flags keep coming, with no clock. Click the ground to plant one yourself.';
+  if (mode === 'roam' && stage.task === 'shove') hint = `Let loose with no clock and a crate to bully. ${PRESS} the ground to send it somewhere else.`;
+  if (mode === 'roam' && stage.task === 'swim') hint = `Let loose with no clock. ${PRESS} anywhere in the water to give it somewhere to go.`;
+  if (mode === 'roam' && stage.task === 'chase') hint = `Flags keep coming, with no clock. ${PRESS} the ground to plant one yourself.`;
   if (stage.exhibit) hint = HINTS.exhibit;
   $('modehint').textContent = hint;
   const showGen = mode === 'watch' && !stage.exhibit && stage.hasLineage();
@@ -1902,6 +2062,10 @@ async function showCheat() {
   for (const b of $('map').children) if (!b.disabled) b.setAttribute('aria-pressed', 'false');
   describe();
   setMode('watch');
+  // Stacked, the link is at the foot of the page and the account of what
+  // the exhibit did is in the label at the head of it. (The stage is pinned
+  // and does not move, so going straight there is not a lurch.)
+  if (stackedQuery.matches) scrollTo(0, 0);
 }
 
 function wireUI() {
@@ -1968,6 +2132,17 @@ function resize() {
     if (!stackedQuery.matches) camera.setViewOffset(w, h, -Math.min(170, w * 0.13), 50, w, h);
     else camera.clearViewOffset();
     camera.updateProjectionMatrix();
+    // A phone-sized picture cannot show the detail of the full shadow map,
+    // and a phone's GPU is the one that would most like not to fill it.
+    const shadow = stackedQuery.matches && Math.max(canvas.width, canvas.height) <= 1024 ? 1024 : 2048;
+    if (sun.shadow.mapSize.x !== shadow) {
+      sun.shadow.mapSize.set(shadow, shadow);
+      if (sun.shadow.map) {
+        sun.shadow.map.dispose();
+        sun.shadow.map = null;
+      }
+    }
+    if (stackedQuery.matches) stage.refit();
   }
 }
 
