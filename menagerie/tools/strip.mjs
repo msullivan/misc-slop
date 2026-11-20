@@ -21,7 +21,7 @@ const every = Number(opt('every', 0.2));
 const frames = Number(opt('frames', 12));
 const cols = Number(opt('cols', 6));
 const mode = opt('mode', 'watch');
-const W = 800, H = 520;
+const W = 800, H = 560;
 
 const browser = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
 const page = await browser.newPage({ viewport: { width: W, height: H }, colorScheme: args.includes('--dark') ? 'dark' : 'light' });
@@ -69,7 +69,7 @@ import sys
 from PIL import Image
 files = sys.argv[2:]
 cols = ${cols}
-ims = [Image.open(f).crop((160, 60, 800, 500)).resize((480, 330)) for f in files]
+ims = [Image.open(f).crop((160, 80, 800, 520)).resize((480, 330)) for f in files]
 w, h = ims[0].size
 rows = (len(ims) + cols - 1) // cols
 sheet = Image.new('RGB', (cols * w, rows * h), 'white')

@@ -52,7 +52,9 @@ const HABITATS = {
     metric: 'clearance',
   },
 };
-const ORDER = ['sprint', 'walk', 'rough', 'chase', 'shove', 'swim', 'jump'];
+// Walk first: it is what the page opens on, and its animals are the ones
+// that look most like animals.
+const ORDER = ['walk', 'sprint', 'rough', 'chase', 'shove', 'swim', 'jump'];
 // What each axis of the map means, by the trait the archive was sorted on.
 const AXIS = {
   feet: 'more feet',

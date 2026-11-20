@@ -35,6 +35,27 @@ What's there:
   sitting still and then exploiting a bug in the physics engine to launch
   itself ten metres into the air. Preserved, with the bug, as an exhibit.
 
+## The collection
+
+Bred in just under five hours on a 32-core Threadripper: 15.3 million
+creatures tried, 2,891 kept, six isolated families per habitat.
+
+| Habitat | The job | Tried | Best |
+|---|---|---|---|
+| Walk | cover ground in 10 s without letting the body rest on the floor | 3.0 M | 24.2 m |
+| Sprint | cover ground in 10 s, anything goes | 3.0 M | 19.1 m |
+| Rough | cover lumpy ground in 12 s, two courses | 1.8 M | 15.3 m |
+| Chase | gain ground on flags that keep moving, 14 s, three courses | 1.5 M | 14.7 m |
+| Shove | move an 80 kg crate as far as possible in 10 s | 1.8 M | 12.4 m |
+| Swim | cover distance in 10 s, weightless in thick water | 2.4 M | 12.7 m |
+| Jump | lift the lowest point of the body as high as possible | 1.8 M | 1.58 m |
+
+Rough, Chase and Shove were started from the Sprint and Walk families, so
+family III on rough ground descends from family III on the flat. The walkers
+ended up faster than the anything-goes sprinters, though nothing stopped a
+sprinter from walking: the rule against resting on the floor pushed the
+search somewhere it didn't get to on its own.
+
 ## How it works
 
 **Genome.** A tree of boxes. Each box is hinged to its parent somewhere on
@@ -101,10 +122,9 @@ comment on joint limits in `core/src/sim.rs`).
 
     cargo build --release
     tools/campaign.sh                 # hours on a 32-core machine
-    tools/pack.py web/data sprint=runs/sprint.json walk=runs/walk.json ...
+    tools/collect.sh                  # fetch, pack into web/data, verify against the wasm build
     cargo build --profile web -p menagerie-wasm --target wasm32-unknown-unknown
     cp target/wasm32-unknown-unknown/web/menagerie_wasm.wasm web/mg.wasm
-    node tools/check_wasm.mjs web/mg.wasm runs/sprint.json
 
 Useful while poking at it:
 

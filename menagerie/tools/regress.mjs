@@ -34,7 +34,7 @@ await page.waitForTimeout(4000);
 await log('zoo-after-trial');
 // 2. cheat, sumo, families, habitats
 await page.click('#cheat'); await page.waitForTimeout(300); await log('cheat');
-for (const t of ['walk', 'chase', 'shove']) { await page.evaluate(async (t) => { await window.menagerie.showTask(t); }, t); await log(t);
+for (const t of ['walk', 'sprint', 'rough', 'chase', 'shove', 'swim', 'jump']) { await page.evaluate(async (t) => { await window.menagerie.showTask(t); }, t); await log(t);
   for (const m of ['roam', 'line', 'race', 'fight', 'watch']) { await page.evaluate((m) => window.menagerie.setMode(m), m); await page.evaluate(() => { window.menagerie.stage.paused = true; window.menagerie.advance(90); window.menagerie.stage.paused = false; }); }
 }
 await log('end');

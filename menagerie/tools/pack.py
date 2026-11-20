@@ -51,7 +51,7 @@ def main():
             json.dump(out, f, separators=(",", ":"))
         n_fam = len(out["families"])
         print(f"{dest}: {len(out['elites'])} cells, {n_fam} families, {os.path.getsize(dest) / 1e6:.2f} MB")
-    order = ["sprint", "walk", "rough", "chase", "shove", "swim", "jump"]
+    order = ["walk", "sprint", "rough", "chase", "shove", "swim", "jump"]
     have = [t for t in order if os.path.exists(os.path.join(out_dir, f"{t}.json"))]
     with open(os.path.join(out_dir, "index.json"), "w") as f:
         json.dump({"tasks": have}, f)
