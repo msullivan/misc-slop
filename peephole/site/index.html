@@ -1,0 +1,348 @@
+<meta charset="utf-8">
+<title>Peephole Census</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@600&display=swap">
+<style>
+/* Layout: a listing, not a landing page. One column of instruments (scoreboard,
+   matrix), then a two-pane diff per finding: what was written | what it equals. */
+:root {
+  --bg: #f3f5f7; --panel: #ffffff; --sunk: #e9edf1; --ink: #17212b; --muted: #5b6875;
+  --rule: #d5dce3; --accent: #3d4fc4; --accent-ink: #ffffff;
+  --uops: #eb6834; --depth: #2a78d6; --heat: 42, 120, 214;
+  --worse: #b3401b; --better: #0f7a55;
+  --sans: "IBM Plex Sans", system-ui, sans-serif;
+  --cond: "IBM Plex Sans Condensed", "IBM Plex Sans", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #12171c; --panel: #1a2128; --sunk: #232c35; --ink: #e6ebf0; --muted: #93a1ae;
+  --rule: #303b46; --accent: #8e9bf5; --accent-ink: #10131f;
+  --uops: #d95926; --depth: #3987e5; --heat: 57, 135, 229;
+  --worse: #f08a63; --better: #4fc79b; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #12171c; --panel: #1a2128; --sunk: #232c35; --ink: #e6ebf0; --muted: #93a1ae;
+  --rule: #303b46; --accent: #8e9bf5; --accent-ink: #10131f;
+  --uops: #d95926; --depth: #3987e5; --heat: 57, 135, 229;
+  --worse: #f08a63; --better: #4fc79b; color-scheme: dark }
+
+[hidden] { display: none !important; }
+body { background: var(--bg); color: var(--ink); font: 14px/1.45 var(--sans);
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 20px 56px; }
+main { max-width: 1120px; margin: 0 auto; display: flex; flex-direction: column; gap: 28px; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px 24px; }
+h1 { font: 600 28px/1.1 var(--cond); letter-spacing: .01em; margin: 0; }
+h2 { font: 600 13px/1.2 var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 0 0 10px; }
+.facts { color: var(--muted); font-variant-numeric: tabular-nums; }
+.facts b { color: var(--ink); font-weight: 600; }
+.seg { display: inline-flex; border: 1px solid var(--rule); border-radius: 6px; overflow: hidden; background: var(--panel); flex-wrap: wrap; }
+.seg button { font: 500 13px var(--sans); color: var(--ink); background: none; border: 0; padding: 6px 12px; cursor: pointer; }
+.seg button + button { border-left: 1px solid var(--rule); }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+button:focus-visible, select:focus-visible, input:focus-visible, a:focus-visible, tr:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.scroll { overflow-x: auto; background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; }
+table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+th, td { padding: 7px 10px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--rule); }
+tr:last-child td { border-bottom: 0; }
+th { font: 500 12px var(--sans); color: var(--muted); background: var(--sunk); }
+th:first-child, td:first-child { text-align: left; font-family: var(--mono); font-weight: 500; }
+#board tbody tr { cursor: pointer; }
+#board tbody tr[aria-selected="true"] td:first-child { box-shadow: inset 3px 0 var(--accent); }
+.bar { display: flex; align-items: center; gap: 8px; justify-content: flex-end; }
+.bar span { order: -1; }
+.bar .track { display: flex; gap: 2px; width: 110px; height: 10px; }
+.bar .track i { display: block; height: 100%; border-radius: 2px; }
+.bar .u { background: var(--uops); } .bar .d { background: var(--depth); }
+.bar span { min-width: 3.6em; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 18px; color: var(--muted); font-size: 12px; margin-top: 8px; }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+#h2h td { text-align: center; min-width: 64px; }
+#h2h td:first-child { text-align: left; }
+.controls { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; margin-bottom: 12px; }
+select, input[type=search] { font: 13px var(--sans); color: var(--ink); background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; padding: 6px 8px; }
+input[type=search] { flex: 1 1 180px; min-width: 0; font-family: var(--mono); }
+label.chk { display: inline-flex; gap: 6px; align-items: center; color: var(--muted); }
+.count { color: var(--muted); margin-left: auto; font-variant-numeric: tabular-nums; }
+#list { display: flex; flex-direction: column; gap: 10px; }
+.card { background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; }
+.pair { display: grid; grid-template-columns: 1fr 1fr; }
+.side { padding: 12px 14px; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.side + .side { border-left: 1px solid var(--rule); }
+.expr { font: 600 15px/1.35 var(--mono); overflow-wrap: anywhere; }
+.asm { font: 12.5px/1.5 var(--mono); color: var(--muted); margin: 0; white-space: pre; overflow-x: auto; }
+.cost { font: 500 12px var(--sans); font-variant-numeric: tabular-nums; }
+.side.w .cost { color: var(--worse); } .side.b .cost { color: var(--better); }
+.tag { font: 500 11px var(--sans); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.foot { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; padding: 8px 14px; border-top: 1px solid var(--rule); color: var(--muted); font-size: 12px; }
+.chip { font-family: var(--mono); background: var(--sunk); border-radius: 4px; padding: 1px 6px; color: var(--ink); }
+.foot .sp { margin-left: auto; display: flex; gap: 8px; }
+.foot button, .foot a, #more { font: 500 12px var(--sans); color: var(--accent); background: none; border: 1px solid var(--rule); border-radius: 6px; padding: 4px 9px; cursor: pointer; text-decoration: none; }
+#more { align-self: center; padding: 8px 16px; font-size: 13px; }
+@media (max-width: 640px) { .pair { grid-template-columns: 1fr; } .side + .side { border-left: 0; border-top: 1px solid var(--rule); } .bar .track { width: 56px; } }
+</style>
+
+<main>
+  <header>
+    <h1>Peephole Census</h1>
+    <div class="seg" id="runs" role="group" aria-label="Census"></div>
+    <div class="facts" id="facts"></div>
+  </header>
+
+  <section>
+    <h2>Beaten by its own output for an equivalent expression</h2>
+    <div class="scroll"><table id="board"></table></div>
+    <div class="legend">
+      <span><i style="background:var(--uops)"></i>fewer uops available</span>
+      <span><i style="background:var(--depth)"></i>same uops, shorter dependency chain</span>
+      <span>size = operations in the expression</span>
+    </div>
+  </section>
+
+  <section>
+    <h2>Row strictly better than column on the same source</h2>
+    <div class="scroll"><table id="h2h"></table></div>
+  </section>
+
+  <section>
+    <h2>Findings</h2>
+    <div class="controls">
+      <div class="seg" id="mode" role="group" aria-label="View">
+        <button id="mode-miss" aria-pressed="true">Missed</button>
+        <button id="mode-reg" aria-pressed="false">Regressed</button>
+        <button id="mode-wrong" aria-pressed="false">Miscompiled</button>
+      </div>
+      <select id="comp" aria-label="Compiler"></select>
+      <select id="size" aria-label="Size"></select>
+      <select id="kind" aria-label="Kind">
+        <option value="">any saving</option><option value="u">fewer uops</option><option value="d">shorter chain only</option>
+      </select>
+      <label class="chk" id="solo-l"><input type="checkbox" id="solo"> no other compiler misses it</label>
+      <input type="search" id="q" placeholder="filter: x * y, >>s 31, imul …" aria-label="Filter">
+      <span class="count" id="count"></span>
+    </div>
+    <div id="list"></div>
+  </section>
+</main>
+
+<script>
+const RUN_NAMES = { arith: "Arithmetic & bitwise", cmp: "Comparisons & min/max" };
+const GODBOLT = { "clang-10": "cclang1001", "clang-14": "cclang1400", "clang-17": "cclang1701", "clang-18": "cclang1810",
+  "clang-23": "cclang2310", "gcc-9": "cg95", "gcc-11": "cg114", "gcc-12": "cg123", "gcc-13": "cg133", "gcc-16": "cg162" };
+const $ = id => document.getElementById(id);
+const el = (tag, attrs = {}, ...kids) => {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) k === "text" ? e.textContent = v : e.setAttribute(k, v);
+  for (const k of kids) e.append(k);
+  return e;
+};
+const fmt = n => n.toLocaleString("en-US");
+const pct = (a, b) => b ? (100 * a / b) : 0;
+const pctStr = v => v === 0 ? "0" : v < 0.095 ? v.toFixed(2) + "%" : v.toFixed(1) + "%";
+const state = { run: 0, comp: null, mode: "miss", shown: 60 };
+let S, cache = {}, items = [];
+
+const getJSON = async name => cache[name] ??= await (await fetch(name)).json();
+const run = () => S.runs[state.run];
+
+function costText(c) { return `${c[0]} uop${c[0] === 1 ? "" : "s"} · depth ${c[1]}`; }
+function asmText(a) { return a ? a.split(";").join("\n") : "(nothing: the argument is already the result)"; }
+
+function source(kind, lang, e, w) {
+  const vars = lang.vars === 3 ? ["x", "y", "z"] : ["x", "y"];
+  if (kind === "go") {
+    const b2i = (e.ce + (w ? w : "")).includes("b2i(") ? "func b2i(b bool) uint32 {\n\tif b {\n\t\treturn 1\n\t}\n\treturn 0\n}\n\n" : "";
+    const f = (n, body) => `func ${n}(${vars.join(", ")} uint32) uint32 { return ${body} }\n`;
+    return "package p\n\n" + b2i + f("written", e.ce) + (w ? f("equivalent", w) : "");
+  }
+  if (kind === "wat") {
+    const f = (n, body) => `  (func (export "${n}") ${vars.map(() => "(param i32)").join(" ")} (result i32)\n    ${body})\n`;
+    return "(module\n" + f("written", e.ce) + (w ? f("equivalent", w) : "") + ")\n";
+  }
+  const f = (n, body) => `uint32_t ${n}(${vars.map(v => "uint32_t " + v).join(", ")}) { return ${body}; }\n`;
+  return "#include <stdint.h>\n\n" + f("written", e.ce) + (w ? f("equivalent", w) : "");
+}
+
+function godbolt(src, ids) {
+  const st = { sessions: [{ id: 1, language: "c", source: src, compilers: ids.map(id => ({ id, options: "-O2" })) }] };
+  const bytes = new TextEncoder().encode(JSON.stringify(st));
+  let bin = ""; for (const b of bytes) bin += String.fromCharCode(b);
+  return "https://godbolt.org/clientstate/" + btoa(bin).replace(/\+/g, "-").replace(/\//g, "_");
+}
+
+function renderRuns() {
+  const box = $("runs"); box.replaceChildren();
+  S.runs.forEach((r, i) => {
+    const b = el("button", { "aria-pressed": i === state.run, text: RUN_NAMES[r.id] || r.id });
+    b.onclick = () => { state.run = i; state.comp = null; renderAll(); };
+    box.append(b);
+  });
+  box.hidden = S.runs.length < 2;
+}
+
+function renderFacts() {
+  const r = run();
+  const ex = r.levels.reduce((a, l) => a + l.expressions, 0);
+  $("facts").replaceChildren(
+    el("b", { text: fmt(ex) }), " expressions · ", el("b", { text: fmt(r.classes) }), " distinct functions · ",
+    el("b", { text: fmt(r.n) }), " compiled × ", el("b", { text: String(r.compilers.length) }), " compilers");
+}
+
+function renderBoard() {
+  const r = run(), sizes = r.compilers[0].stats.map(s => s.size).filter((s, i) => r.compilers.some(c => c.stats[i].hard + c.stats[i].sched));
+  const max = Math.max(...r.compilers.flatMap(c => c.stats.map(s => pct(s.hard + s.sched, s.n))));
+  const anyBranch = r.compilers.some(c => c.stats.some(s => s.branchy)), anyFail = r.compilers.some(c => c.stats.some(s => s.failed)), anyWrong = r.compilers.some(c => c.stats.some(s => s.wrong));
+  const head = el("tr", {}, el("th", { text: "compiler" }), ...sizes.map(s => el("th", { text: "size " + s })),
+    el("th", { text: "all" }), el("th", { text: "beaten by any compiler", title: "Some compiler produced strictly better code for an equivalent expression" }));
+  if (anyBranch) head.append(el("th", { text: "branches", title: "Functions compiled to a conditional jump; not ranked" }));
+  if (anyFail) head.append(el("th", { text: "crashes", title: "Functions the compiler failed on" }));
+  if (anyWrong) head.append(el("th", { text: "miscompiled", title: "Functions whose compiled code returns the wrong value" }));
+  const body = el("tbody");
+  for (const c of r.compilers) {
+    const tr = el("tr", { tabindex: 0, "aria-selected": c.name === state.comp }, el("td", { text: c.name }));
+    const cell = (h, s, n) => {
+      const ph = pct(h, n), ps = pct(s, n);
+      const track = el("div", { class: "track" });
+      if (h) track.append(el("i", { class: "u", style: `width:${Math.max(2, 100 * ph / max)}%` }));
+      if (s) track.append(el("i", { class: "d", style: `width:${Math.max(2, 100 * ps / max)}%` }));
+      return el("td", { title: `${fmt(h)} with fewer uops available, ${fmt(s)} with a shorter chain, of ${fmt(n)}` },
+        el("div", { class: "bar" }, track, el("span", { text: pctStr(ph + ps) })));
+    };
+    let H = 0, Sd = 0, N = 0, B = 0, Br = 0, F = 0, W = 0;
+    for (const s of c.stats) { H += s.hard; Sd += s.sched; N += s.n; B += s.beaten; Br += s.branchy; F += s.failed; W += s.wrong || 0; }
+    for (const sz of sizes) { const s = c.stats.find(x => x.size === sz); tr.append(cell(s.hard, s.sched, s.n)); }
+    tr.append(cell(H, Sd, N), el("td", { text: pctStr(pct(B, N)), title: fmt(B) + " of " + fmt(N) }));
+    if (anyBranch) tr.append(el("td", { text: fmt(Br) }));
+    if (anyFail) tr.append(el("td", { text: fmt(F) }));
+    if (anyWrong) tr.append(el("td", { text: fmt(W) }));
+    const pick = () => { state.comp = c.name; state.mode = "miss"; renderBoard(); renderControls(); loadList(); };
+    tr.onclick = pick; tr.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pick(); } };
+    body.append(tr);
+  }
+  $("board").replaceChildren(el("thead", {}, head), body);
+}
+
+function renderH2H() {
+  const r = run(), names = r.compilers.map(c => c.name);
+  const max = Math.max(...r.h2h.flat()) / r.n * 100 || 1;
+  const head = el("tr", {}, el("th", { text: "" }), ...names.map(n => el("th", { text: n })));
+  const body = el("tbody");
+  r.h2h.forEach((row, i) => {
+    const tr = el("tr", {}, el("td", { text: names[i] }));
+    row.forEach((v, j) => {
+      const p = 100 * v / r.n;
+      tr.append(i === j ? el("td", { text: "" }) : el("td", { text: pctStr(p), title: `${names[i]} beats ${names[j]} on ${fmt(v)} of ${fmt(r.n)}`,
+        style: `background: rgba(var(--heat), ${(0.55 * p / max).toFixed(3)})` }));
+    });
+    body.append(tr);
+  });
+  $("h2h").replaceChildren(el("thead", {}, head), body);
+}
+
+function renderControls() {
+  const r = run();
+  if (!state.comp || !r.compilers.some(c => c.name === state.comp)) state.comp = (r.compilers.find(c => c.name === "clang-23") || r.compilers[0]).name;
+  $("mode-miss").setAttribute("aria-pressed", state.mode === "miss");
+  $("mode-reg").setAttribute("aria-pressed", state.mode === "reg");
+  $("mode-wrong").setAttribute("aria-pressed", state.mode === "wrong");
+  const wrongs = r.compilers.filter(c => c.wrong && c.wrong.length);
+  $("mode-reg").hidden = !r.regressions.length;
+  $("mode-wrong").hidden = !wrongs.length;
+  $("mode").hidden = !r.regressions.length && !wrongs.length;
+  if (state.mode === "wrong" && !wrongs.length) state.mode = "miss";
+  if (state.mode === "reg" && !r.regressions.length) state.mode = "miss";
+  const sel = $("comp"); sel.replaceChildren();
+  if (state.mode === "miss") for (const c of r.compilers) sel.append(el("option", { value: c.name, text: c.name }));
+  else if (state.mode === "wrong") {
+    for (const c of wrongs) sel.append(el("option", { value: c.name, text: `${c.name}  (${c.wrong.length})` }));
+    if (!wrongs.some(c => c.name === state.comp)) state.comp = wrongs[wrongs.length - 1].name;
+  } else for (const g of r.regressions) sel.append(el("option", { value: g.new, text: `${g.old} → ${g.new}  (${fmt(g.worse)} worse, ${fmt(g.better)} better)` }));
+  if (state.mode === "reg" && !r.regressions.some(g => g.new === state.comp)) state.comp = r.regressions[r.regressions.length - 1].new;
+  sel.value = state.comp;
+  const sz = $("size"), keep = sz.value; sz.replaceChildren(el("option", { value: "", text: "any size" }));
+  for (const s of r.compilers[0].stats) sz.append(el("option", { value: s.size, text: "size " + s.size }));
+  sz.value = keep;
+  $("solo-l").hidden = state.mode !== "miss" || r.compilers.length < 2;
+  $("kind").hidden = state.mode === "wrong";
+}
+
+async function loadList() {
+  const r = run(), token = `${r.id}/${state.mode}/${state.comp}`;
+  state.token = token;
+  let data;
+  if (state.mode === "wrong") data = r.compilers.find(c => c.name === state.comp).wrong;
+  else if (state.mode === "miss") data = await getJSON(`ex-${r.id}-${state.comp}.json`);
+  else data = (await getJSON(`reg-${r.id}.json`)).filter(e => e.new === state.comp);
+  if (state.token !== token) return;
+  items = data; state.shown = 60; renderList();
+}
+
+function renderList() {
+  const r = run(), q = $("q").value.trim().toLowerCase(), size = $("size").value, kind = $("kind").value, solo = $("solo").checked && state.mode === "miss";
+  const comp = r.compilers.find(c => c.name === state.comp), names = r.compilers.map(c => c.name);
+  const list = $("list"); list.replaceChildren();
+  if (state.mode === "wrong") {
+    const rows = items.filter(e => (!size || e.s == size) && (!q || e.e.toLowerCase().includes(q)));
+    $("count").textContent = `${fmt(rows.length)} miscompiled expressions`;
+    for (const e of rows) {
+      const src = source("c", r, e, null);
+      const args = e.input.slice(0, r.vars).join(", ");
+      const left = el("div", { class: "side w" }, el("div", { class: "tag", text: "written" }), el("div", { class: "expr", text: e.e }),
+        el("pre", { class: "asm", text: src.trim() }));
+      const right = el("div", { class: "side b" }, el("div", { class: "tag", text: state.comp + " " + e.levels.join(" ") }),
+        el("div", { class: "expr", text: `written(${args})` }),
+        el("div", { class: "cost", text: `should be ${e.want}` }), el("div", { class: "cost", style: "color:var(--worse)", text: `returns ${e.got}` }));
+      const sp = el("span", { class: "sp" });
+      if (GODBOLT[state.comp]) sp.append(el("a", { href: godbolt(src, [GODBOLT[state.comp]]), target: "_blank", rel: "noopener", text: "Compiler Explorer" }));
+      list.append(el("div", { class: "card" }, el("div", { class: "pair" }, left, right), el("div", { class: "foot" }, el("span", { text: "size " + e.s }), sp)));
+    }
+    return;
+  }
+  const rows = items.filter(e => (!size || e.s == size) && (!kind || (kind === "u") === (e.wc[0] < e.c[0])) && (!solo || !e.also.length)
+    && (!q || (e.e + " " + (e.w || "") + " " + e.a + " " + e.wa).toLowerCase().includes(q)));
+  const total = state.mode === "miss" ? comp.roots : r.regressions.find(g => g.new === state.comp).worse;
+  $("count").textContent = `${fmt(rows.length)} shown of ${fmt(total)} ${state.mode === "miss" ? "independent misses" : "regressed expressions"}`;
+  for (const e of rows.slice(0, state.shown)) {
+    const reg = state.mode === "reg";
+    const left = el("div", { class: "side w" }, el("div", { class: "tag", text: reg ? state.comp : "written" }),
+      el("div", { class: "expr", text: e.e }), el("pre", { class: "asm", text: asmText(e.a) }), el("div", { class: "cost", text: costText(e.c) }));
+    const right = el("div", { class: "side b" }, el("div", { class: "tag", text: reg ? e.old : "equivalent" }),
+      el("div", { class: "expr", text: reg ? e.e : e.w }), el("pre", { class: "asm", text: asmText(e.wa) }), el("div", { class: "cost", text: costText(e.wc) }));
+    const foot = el("div", { class: "foot" }, el("span", { text: "size " + e.s }));
+    if (!reg) {
+      if (e.fam > 1) foot.append(el("span", { text: `${fmt(e.fam)} of this shape`, title: "Misses that differ only in their constants" }));
+      foot.append(el("span", { text: e.proof === "tested" ? "tested, not proved" : "proved (" + e.proof + ")" }));
+      if (e.also.length) foot.append(el("span", {}, "also missed by ", ...e.also.map(i => el("span", { class: "chip", text: names[i] })).flatMap((c, i) => i ? [" ", c] : [c])));
+    }
+    const kindOf = reg ? r.compilers.find(c => c.name === state.comp).kind : comp.kind;
+    const src = source(kindOf, r, e, reg ? null : e.cw);
+    const sp = el("span", { class: "sp" });
+    const copy = el("button", { text: "Copy source" });
+    copy.onclick = async () => { try { await navigator.clipboard.writeText(src); copy.textContent = "Copied"; } catch { copy.textContent = "Copy failed"; } setTimeout(() => copy.textContent = "Copy source", 1200); };
+    sp.append(copy);
+    if (kindOf === "c") {
+      const ids = (reg ? [e.old, state.comp] : [state.comp]).map(n => GODBOLT[n]).filter(Boolean);
+      if (ids.length) sp.append(el("a", { href: godbolt(src, ids), target: "_blank", rel: "noopener", text: "Compiler Explorer" }));
+    }
+    foot.append(sp);
+    list.append(el("div", { class: "card" }, el("div", { class: "pair" }, left, right), foot));
+  }
+  if (rows.length > state.shown) {
+    const more = el("button", { id: "more", text: `Show ${Math.min(60, rows.length - state.shown)} more` });
+    more.onclick = () => { state.shown += 60; renderList(); };
+    list.append(more);
+  }
+  if (!rows.length) list.append(el("div", { class: "foot", text: "Nothing matches these filters." }));
+}
+
+function renderAll() { renderRuns(); renderFacts(); renderControls(); renderBoard(); renderH2H(); loadList(); }
+
+$("comp").onchange = e => { state.comp = e.target.value; renderBoard(); loadList(); };
+for (const id of ["size", "kind", "solo"]) $(id).onchange = () => { state.shown = 60; renderList(); };
+$("q").oninput = () => { state.shown = 60; renderList(); };
+$("mode-miss").onclick = () => { state.mode = "miss"; renderControls(); loadList(); };
+$("mode-reg").onclick = () => { state.mode = "reg"; renderControls(); loadList(); };
+$("mode-wrong").onclick = () => { state.mode = "wrong"; renderControls(); renderBoard(); loadList(); };
+
+getJSON("summary.json").then(s => { S = s; renderAll(); })
+  .catch(() => { $("list").textContent = "Could not load summary.json. Serve this folder over HTTP (python3 -m http.server)."; });
+</script>
