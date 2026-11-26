@@ -106,6 +106,27 @@ about this and did not design for it.
 - sonnet, first in the real round 3, is 9th here: its handling of random is
   weak (2.09).
 
+### The earlier rounds' bots against the house bots
+
+`results/round1-with-examples/` and `results/round2-with-examples/` do the
+same with each bot as it stood in round 1 and round 2.
+
+| | round 1 bots | round 2 bots | round 3 bots |
+|---|---|---|---|
+| winner | fable-1 (2.963) | tit_for_tat (2.890) | opus-2 (2.950) |
+| plain tit_for_tat | 5th | 1st | 4th |
+| bots that exploit always_cooperate | fable-1, opus-2, terra, sonnet, haiku, luna | haiku | haiku |
+| always_cooperate's score | 1.38 (last) | 2.50 | 2.43 |
+
+- The round 1 bots were much more predatory: six of twelve found and farmed
+  always-cooperate. fable-1 wins that field by a wide margin because it both
+  exploits always-cooperate (4.36) and handles random well (2.91).
+- After round 1 the agents removed their probes because nobody in the real
+  field was a pushover. Against a field that does contain one, that cost
+  them: the round 2 bots as a group lose to plain tit-for-tat.
+- Each of these is a single run of 5 games per pairing with random match
+  lengths, so small differences in the middle of the table are noise.
+
 ## Running it
 
     python3 tournament.py run --round N        # full round-robin, writes results/roundN

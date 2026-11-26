@@ -176,7 +176,7 @@ def cmd_match(args):
 
 
 def cmd_run(args):
-    bots_dir = os.path.join(HERE, "bots")
+    bots_dir = os.path.abspath(args.bots_dir or os.path.join(HERE, "bots"))
     names = sorted(d for d in os.listdir(bots_dir)
                    if os.access(os.path.join(bots_dir, d, "run"), os.X_OK))
     if args.only:
@@ -296,6 +296,8 @@ def main():
     r.add_argument("--games", type=int, default=5)
     r.add_argument("--jobs", type=int, default=16)
     r.add_argument("--only", nargs="*", help="restrict to these bots (testing)")
+    r.add_argument("--bots-dir", help="take the entrants from here instead "
+                   "of bots/ (e.g. an earlier round's checkout)")
     r.add_argument("--extra", nargs="*", help="extra bot directories to enter")
     r.add_argument("--name", help="results directory name for a side "
                    "tournament (writes no per-bot transcripts)")
