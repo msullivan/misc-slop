@@ -26,8 +26,12 @@ def terra(me, op):
     return 'C'
 def haiku(me, op):
     t=len(me)
-    if t in (1,2,12): return 'D'
+    if t in (1,2,12,22): return 'D'
+    if t in (3,14,24): return 'C'
     return op[-1] if op else 'C'
+def farm(me, op):  # D, take the punishment, D again, repeat
+    t=len(me)
+    return 'D' if t%8 in (3,5) else 'C'
 def run(f, n=300):
     b = fb.Bot()
     me=[];op=[];s=0;so=0
@@ -38,7 +42,7 @@ def run(f, n=300):
         s+=PAY[m,o]; so+=PAY[o,m]
     return s/n, so/n, ''.join(me[:110]), ''.join(op[:110])
 random.seed(1); t0=time.time()
-for f in [allc,alld,tft,tf2t,grim,pavlov,joss,stft,rnd,exploiter,luna,terra,haiku]:
+for f in [allc,alld,tft,tf2t,grim,pavlov,joss,stft,rnd,exploiter,luna,terra,haiku,farm]:
     a,b,m,o = run(f)
     print(f"{f.__name__:10s} me={a:.2f} op={b:.2f}\n  {m}\n  {o}")
 print(time.time()-t0)

@@ -18,6 +18,7 @@ class Bot:
         self.pn, self.pc = 1.0, 1.0
         self.qn, self.qc = 0.0, 0.0
         self.unprov = 0.0          # decayed count of unprovoked defections
+        self.forgiven = 0.0        # decayed count of echo forgivenesses
         self.olive = 0             # forced-C rounds remaining
         self.model_mode = False
         self.last_test = 0
@@ -45,6 +46,7 @@ class Bot:
             e[0] = e[0] * 0.8 + 1
             e[1] = e[1] * 0.8 + (self.op[-1] == 'C')
         self.unprov *= 0.98
+        self.forgiven *= 0.99
         if self.op[-1] == 'D' and all(m == 'C' for m in self.my[-3:-1]):
             self.unprov += 1
         if self.my[-1] == 'C' and self.op[-1] == 'C':
@@ -121,8 +123,13 @@ class Bot:
             return 'C'
 
         # opponent defected last round
+        if t == 3 and self.my == ['C', 'C', 'D'] and self.op == ['C', 'D', 'D']:
+            # opening two-round probe (seen in rounds 1 and 2): one D back is
+            # accepted, a second one gets punished, so stop at one
+            return 'C'
         if (t >= 2 and self.my[-2] == 'D' and self.op[-2] == 'C'
-                and self.unprov < 2.5):
+                and self.unprov < 2.5 and self.forgiven < 1.5):
+            self.forgiven += 1
             # their D answers a D of mine made while they cooperated: this is
             # a retaliation echo, absorb it rather than bounce it back
             return 'C'

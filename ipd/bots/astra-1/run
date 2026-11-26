@@ -22,7 +22,8 @@ def play():
             replies[previous][other == "D"] += 1
 
         mutual_defections = mutual_defections + 1 if move == other == "D" else 0
-        if move == other == "C":
+        mutual_cooperation = move == other == "C"
+        if mutual_cooperation:
             next_reset, reset_gap = 2, 4
             delayed_replies = 0
 
@@ -37,7 +38,8 @@ def play():
         # materially improve when we cooperate. Smooth sparse observations.
         p_c = (cc + 1) / (cc + cd + 2)
         p_d = (dc + 1) / (dc + dd + 2)
-        if cd >= 3 and dc >= 3 and p_d + 0.18 >= p_c:
+        # Preserve mutual cooperation even if earlier replies favored D.
+        if not mutual_cooperation and cd >= 3 and dc >= 3 and p_d + 0.18 >= p_c:
             action = "D"
 
         if probe_age == 0:

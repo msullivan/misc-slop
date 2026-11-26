@@ -25,24 +25,23 @@ def decide(mine, theirs, rng):
     if theirs[:N] == HANDSHAKE and "D" not in theirs[N:]:
         return "C"
 
-    # Their reply to each of our moves, counted from the first round after the
-    # handshake. Cumulative over the whole match, so verdicts persist even when
+    # Their reply to each of our defections, counted from the first round after
+    # the handshake. Cumulative over the match, so a verdict persists even when
     # we stop playing the move that produced the evidence.
-    c_total = c_punished = 0   # rounds after our C, and how often they defected
-    d_total = d_punished = 0   # rounds after our D, and how often they defected
+    d_total = d_punished = 0
     for i in range(N, t):
-        if mine[i - 1] == "C":
-            c_total += 1
-            c_punished += theirs[i] == "D"
-        else:
+        if mine[i - 1] == "D":
             d_total += 1
             d_punished += theirs[i] == "D"
 
-    # 2. Unconditional defector: defects after most of our cooperations.
-    #    Defecting back is then strictly better (1 beats 0, and their cooperation
-    #    is rare).
-    if c_total >= 4 and c_punished >= 0.75 * c_total:
-        return "D"
+    # 2. Defector: has defected in at least 80% of its last 20 moves, whatever
+    #    we did. Defecting back is then better (1 beats 0). Every 20th round we
+    #    cooperate once anyway: a tit-for-tat that is stuck in mutual defection
+    #    copies it and cooperates again, while a true defector just gives us a
+    #    single 0.
+    recent = theirs[-20:]
+    if t >= 20 and recent.count("D") >= 0.8 * len(recent):
+        return "C" if t % 20 == 0 else "D"
 
     # 3. Unconditional cooperator: still cooperates after (nearly) all of our
     #    defections. Keep defecting to collect 5 a round.

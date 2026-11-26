@@ -11,6 +11,11 @@ def play():
     previous_opponent = None
     recent = deque(maxlen=12)
     cooperation_streak = 0
+    mutual_cooperation_streak = 0
+    mutual_defection_streak = 0
+    established_cooperation = False
+    recovery_moves = 0
+    recovery_used = False
     repair_cooldown = 0
     defensive = False
 
@@ -23,6 +28,15 @@ def play():
 
         recent.append(opponent)
         cooperation_streak = cooperation_streak + 1 if opponent == "C" else 0
+        if move == opponent == "C":
+            mutual_cooperation_streak += 1
+            if mutual_cooperation_streak >= 12:
+                established_cooperation = True
+        else:
+            mutual_cooperation_streak = 0
+        mutual_defection_streak = (
+            mutual_defection_streak + 1 if move == opponent == "D" else 0
+        )
         repair_cooldown = max(0, repair_cooldown - 1)
 
         if recent.count("D") >= 5:
@@ -30,7 +44,23 @@ def play():
         if cooperation_streak >= 5:
             defensive = False
 
-        if defensive:
+        if recovery_moves == 1 and opponent == "C":
+            # The opponent accepted the recovery offer. Discard the old window.
+            recent.clear()
+            recent.append("C")
+            defensive = False
+        recovery_moves = max(0, recovery_moves - 1)
+
+        if (
+            defensive and established_cooperation and not recovery_used
+            and mutual_defection_streak >= 8
+        ):
+            recovery_used = True
+            recovery_moves = 2
+
+        if recovery_moves:
+            next_move = "C"
+        elif defensive:
             next_move = "D"
         elif opponent == "C":
             next_move = "C"

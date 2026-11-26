@@ -181,8 +181,12 @@ def cmd_run(args):
                    if os.access(os.path.join(bots_dir, d, "run"), os.X_OK))
     if args.only:
         names = [n for n in names if n in args.only]
+    dirs = {n: os.path.join(bots_dir, n) for n in names}
+    for d in args.extra or []:      # house bots, e.g. examples/*
+        dirs[os.path.basename(os.path.normpath(d))] = os.path.abspath(d)
+    names = sorted(dirs)
     for n in names:
-        build = os.path.join(bots_dir, n, "build")
+        build = os.path.join(dirs[n], "build")
         if os.access(build, os.X_OK):
             print(f"building {n}", file=sys.stderr)
             subprocess.run([build], cwd=os.path.dirname(build),
@@ -198,7 +202,7 @@ def cmd_run(args):
 
     def work(job):
         a, b, g, n = job
-        m = play_match(os.path.join(bots_dir, a), os.path.join(bots_dir, b), n)
+        m = play_match(dirs[a], dirs[b], n)
         m.update(a=a, b=b, game=g + 1)
         return m
 
@@ -207,7 +211,8 @@ def cmd_run(args):
         matches = list(ex.map(work, jobs))
     print(f"{len(matches)} matches in {time.time() - t0:.1f}s", file=sys.stderr)
 
-    out_dir = os.path.join(HERE, "results", f"round{args.round}")
+    label = args.name or f"round{args.round}"
+    out_dir = os.path.join(HERE, "results", label)
     os.makedirs(out_dir, exist_ok=True)
     with open(os.path.join(out_dir, "matches.jsonl"), "w") as f:
         for m in matches:
@@ -234,7 +239,7 @@ def cmd_run(args):
                 fails[n] += 1
 
     order = sorted(names, key=lambda n: -pts[n] / rds[n])
-    lines = [f"# Round {args.round} standings", "",
+    lines = [f"# {label} standings", "",
              f"{len(names)} bots, {args.games} games per pairing "
              f"(including one pairing against a copy of itself), "
              f"{len(matches)} matches, seed {seed}.", "",
@@ -255,6 +260,8 @@ def cmd_run(args):
         f.write(text)
     print(text)
 
+    if args.name:       # side tournament: no per-bot transcripts
+        return
     for n in names:
         tdir = os.path.join(bots_dir, n, "transcripts")
         os.makedirs(tdir, exist_ok=True)
@@ -289,6 +296,9 @@ def main():
     r.add_argument("--games", type=int, default=5)
     r.add_argument("--jobs", type=int, default=16)
     r.add_argument("--only", nargs="*", help="restrict to these bots (testing)")
+    r.add_argument("--extra", nargs="*", help="extra bot directories to enter")
+    r.add_argument("--name", help="results directory name for a side "
+                   "tournament (writes no per-bot transcripts)")
     r.set_defaults(fn=cmd_run)
     args = ap.parse_args()
     args.fn(args)

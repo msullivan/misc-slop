@@ -28,6 +28,7 @@ Layers, highest priority first:
 import os
 import random
 
+DETECTOR = False        # r1/r2: True.  Misfired on terra (r1) and haiku (r2).
 WINDOW = 80
 ENTER_MARGIN = 0.4
 EXIT_MARGIN = 0.0
@@ -261,7 +262,7 @@ class Opus:
             self.offer_left -= 1
             return "C"
 
-        if t >= MIN_ROUND and self.stage != "exploit":
+        if DETECTOR and t >= MIN_ROUND and self.stage != "exploit":
             adv = self.advantage()
             if adv is not None:
                 if self.mode == "normal" and adv > ENTER_MARGIN:

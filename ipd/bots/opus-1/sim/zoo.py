@@ -344,3 +344,20 @@ class SonnetLike(Base):
 
 
 ZOO += [Luna1, TerraLike, HaikuLike, SonnetLike]
+
+
+class Haiku2Like(Base):
+    """Round-2 haiku as seen: opens C D D C D, probes at 12 and 22, and
+    does not answer a punishment of a probe; TFT otherwise."""
+    def decide(self):
+        t = len(self.my)
+        if t < 5:
+            return "CDDCD"[t]
+        if t in (12, 22):
+            return "D"
+        if t - 1 in (12, 22) or t - 2 in (12, 22):
+            return "C"
+        return self.op[-1]
+
+
+ZOO += [Haiku2Like]

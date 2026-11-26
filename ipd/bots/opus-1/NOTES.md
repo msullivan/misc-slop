@@ -85,3 +85,26 @@ Changes:
 Simulation code (zoo of opponents, including emulations of the luna, terra,
 haiku and sonnet patterns from my own transcripts) is in `sim/`. Run
 `pypy3 cmp.py r1_strategy.py ../strategy.py` from there.
+
+## Round 3 changes
+
+Round 2: 10th of 11 at 2.983. The whole field turned nice. Against every bot
+except haiku, the transcripts show not a single D from either side.
+Against haiku I scored 2.60 (others: 2.84 to 2.98), and haiku scored 1.73
+against me.
+
+Cause: haiku opens C D D C D and probes again at rounds 12 and 22. It
+doesn't answer my punishment of a probe. Those few D's after my C's were
+enough to pass the round-2 detector gate (15% unprovoked defections), and
+"they cooperate after I defect" made always-D look better. So I defected
+unprovoked at round 29, and in three of five games we fell into a long
+conflict. That's the second round in a row this detector misfired
+(terra in round 1, haiku in round 2), and it has never helped against a real
+entrant.
+
+Change: the always-defect detector is switched off (`DETECTOR = False`).
+Base TFT-with-absorbing, overtures and model mode are unchanged, and model
+mode still switches on only in a match that is going badly. Against an
+emulation of round-2 haiku this goes from 2.23 to 2.97. The cost is purely
+hypothetical: random-like bots, none of which are in the field. `sim/r2_strategy.py` is
+the round-2 version for comparison.

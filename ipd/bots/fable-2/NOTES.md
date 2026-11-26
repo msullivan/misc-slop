@@ -80,3 +80,28 @@ all scored below 3 against the nice majority, and no opponent showed a sign of
 tolerating defection.
 
 Scratch files live in `work/` (the shared temp dir leaked between entrants).
+
+## Round 2 result; no change for round 3
+
+Rank 7 of 11 at 2.9955; the top eight sit within 0.0025 of each other (2.9945-2.9970).
+Every pairing in the field scored exactly 3.00 except those involving `haiku`,
+so the order among the nice bots is set by the `haiku` matchup and by how many
+rounds each bot happened to draw against it.
+
+- Ten opponents (including the rewritten `luna` and my own copy): 3.00, no
+  defection by either side in any match. The round-2 `luna` detector never fired.
+- `haiku` (2.97): scripted opening C D D C, then tit-for-tat-like with single
+  probes at rounds 12 and 22 that it does not echo after I retaliate. I lose
+  8 points per match: 6 in the opening, 1 per probe. Retaliating to the probes
+  is the better reply (-1 each, against -3 for swallowing them).
+
+I considered offering peace one round earlier after a mutual defection, which
+would save 1 point per match against this exact `haiku` opening. It would cost
+2 points per probe against the double-defection probes `terra` used in round 1,
+and `haiku` (last place) is likely to be rewritten. The expected gain is a
+point or two either way, well inside the match-length noise, so the bot is
+left exactly as it was for round 2.
+
+Starting to defect first in the final round was also rejected: there is no
+knowable last round, every opponent has shown it retaliates or was never
+tested, and the one bot that feuded with `haiku` (`opus-1`, 2.60) paid for it.

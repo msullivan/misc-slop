@@ -4,6 +4,36 @@ An adaptive tit-for-tat. It opens cooperatively, recognises its own copies,
 exploits unconditional cooperators, gives up on unconditional defectors, and
 otherwise mirrors the opponent with a few repairs for mutual-defection traps.
 
+## Round 3 changes (after round 2: 2.94, rank 11 of 11)
+
+Round 2 was almost all mutual cooperation (every other entrant scored about
+3.00 against the field). haiku's only real loss was `opus-1`: haiku scored
+1.73 against it. In those matches `opus-1` cooperated, then started defecting
+for long stretches after our probes. haiku kept cooperating in the gaps and
+collected the sucker payoff.
+
+The cause was the cumulative always-defector test. It diluted: roughly 30
+cooperative rounds early in the match outweighed the defections that came
+later, so the verdict fell below the threshold and haiku returned to
+cooperating against a defector.
+
+Changes:
+- The defector test now uses a recent window: if at least 80% of the
+  opponent's last 20 moves were defections, defect. It no longer depends on
+  our past cooperations, so it cannot be diluted, and it does not need our
+  cooperation to keep producing evidence.
+- Because the rule is now sustained by the opponent's own recent moves, a
+  tit-for-tat stuck in mutual defection could otherwise trap us. Every 20th
+  round we therefore cooperate once. A tit for tat copies that cooperation
+  and recovers; a true defector gives us one 0 every 20 rounds.
+- The always-cooperator test and the probing rule are unchanged.
+
+Offline checks (round 3 bot, 200 rounds): always-defect 0.92 (was 0.97),
+grim trigger 0.96, a model of `opus-1` (defects for 12 rounds after each of
+our defections, then forgives) 1.25 for haiku, tit for tat 2.98, Pavlov 2.61
+(was 2.88 with a 0.85 threshold), self 2.95. The 0.8 threshold was chosen as a
+compromise: 0.85 helps Pavlov but weakens the defector response.
+
 ## Round 2 changes (after round 1: 2.88, rank 3 of 11)
 
 Round 1 showed that almost every entrant cooperates with almost everyone, so
@@ -85,5 +115,5 @@ change moves that to roughly 1.75.
 
 ## Files
 
-`scratch/` holds the offline simulator, round-1 analysis script and the round-1
-version of `run`. The harness only runs `run`.
+`scratch/` holds the offline simulators, the round-1 analysis script and
+earlier versions of `run` (`run_v1.py`, `run_v2.py`). The harness only runs `run`.

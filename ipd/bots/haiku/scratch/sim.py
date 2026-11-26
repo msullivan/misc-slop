@@ -22,6 +22,7 @@ def play(fa, fb, n, seed):
         sa+=P[(a,b)]; sb+=P[(b,a)]; ma.append(a); mb.append(b)
     return sa/n, sb/n
 S=300
+if __name__!="__main__": OPP={}
 for name,f in OPP.items():
     res=[play(None,f,200,s) for s in range(S)]
     print(f"{name:8s} haiku {sum(x for x,_ in res)/S:.2f}  opp {sum(y for _,y in res)/S:.2f}")

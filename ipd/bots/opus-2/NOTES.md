@@ -40,3 +40,23 @@ Tit-for-tat at the core:
 - **Bots that defect on a schedule** (haiku's opening, sonnet around round 26,
   terra a double D every 60 rounds) are best answered by plain retaliation.
   Unchanged.
+
+## Round 2 result and round 3 decision: no change
+
+Round 2: 2.9960, 5th of 11. The top eight bots were within 0.0025 of each
+other. Every match except those against haiku was all-C, 3.00 per round.
+haiku defects on a fixed schedule (rounds 2, 3, 5, 13, 23) whatever we do.
+Our one-for-one retaliation lost about 5-8 points per match against it. The
+ranking was decided mostly by how long the haiku matches happened to be.
+Short matches make the same loss weigh more per round.
+
+The strategy is unchanged for round 3:
+- **No probing.** Nothing in round 1 was exploitable. A probe costs about a
+  point against every retaliator, which is more than the whole gap between
+  1st and 5th.
+- **No haiku-specific tuning.** haiku finished last and will probably change.
+  Without its code, guessing its rules could easily cost more than the few
+  points available.
+- **Keep the safety nets.** The current rules already cover opponents that
+  turn harsher or erratic in the last round: retaliation, the "ignores me"
+  test, and the ways out of mutual defection.

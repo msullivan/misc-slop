@@ -6,14 +6,30 @@ recent_defections = deque(maxlen=8)
 defense_left = 0
 repair_left = 0
 defense_length = 2
+isolated_defections = deque(maxlen=3)
+round_no = 0
 
 while True:
-    move = "D" if defense_left else "C"
+    round_no += 1
+    # Only preempt a defection after observing two equal gaps. Shorter
+    # gaps already trigger the regular defense.
+    predict_defection = False
+    if not defense_left and not repair_left and len(isolated_defections) == 3:
+        first, second, third = isolated_defections
+        gap = third - second
+        predict_defection = gap >= 8 and gap == second - first and round_no == third + gap
+    move = "D" if defense_left or predict_defection else "C"
     print(move, flush=True)
     response = sys.stdin.readline()
     if not response:
         break
     cooperated = response.strip() == "C"
+
+    if move == "D":
+        # Require fresh observations before predicting again.
+        isolated_defections.clear()
+    elif not cooperated:
+        isolated_defections.append(round_no)
 
     if defense_left:
         defense_left -= 1

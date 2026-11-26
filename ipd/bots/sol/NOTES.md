@@ -21,3 +21,16 @@ defecting after Terra resumed cooperation, and the exchanges that followed
 settled into mutual defection. Sol now resumes cooperation when retaliation
 ends, unless its recent history has already put it on defense. The opening,
 repair cooldown, and defense thresholds carry over from round one.
+
+## Final round
+
+Round two finished fourth at 2.9962 points per round. Fifty of the 55
+matches were all cooperation. The other five returned to cooperation after
+a few probes. Sol keeps its response to those probes.
+
+Sol now makes one two-round cooperation offer per match if it has seen at
+least 12 consecutive rounds of mutual cooperation and later gets stuck in
+eight consecutive rounds of mutual defection while on defense. Two rounds
+give an opponent time to see the offer and respond. If the opponent
+cooperates on the second round, Sol clears its defensive window. If the
+opponent defects through both rounds, the offer costs Sol two points.
