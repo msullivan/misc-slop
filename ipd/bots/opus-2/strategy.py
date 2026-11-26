@@ -5,7 +5,7 @@ import random
 
 
 class Bot:
-    def __init__(self, rng=None, probe_prob=0.25):
+    def __init__(self, rng=None, probe_prob=0.0):
         self.rng = rng or random.Random(int.from_bytes(os.urandom(8), "big"))
         self.me = []        # my moves
         self.op = []        # opponent moves
@@ -15,6 +15,8 @@ class Bot:
         self.last_echo_forgive = -100
         self.deadlock_tries = 0
         self.last_deadlock_try = -100
+        self.pavlov_tries = 0
+        self.followup = -1      # round where we cooperate regardless
         # contrite phase: after our own unprovoked defection(s)
         self.contrite_start = None
         # probing for opponents that do not retaliate
@@ -27,22 +29,40 @@ class Bot:
 
     # ------------------------------------------------------------ helpers
     def unresponsive(self):
-        """Their cooperation barely depends on what we did last round."""
+        """Their next move does not depend on our last move.
+
+        Split rounds by their own previous move (so that fixed patterns such
+        as alternation are not mistaken for reactions to us), then compare
+        P(their C | we played C) with P(their C | we played D)."""
         n = len(self.op)
-        if n < 24:
+        if n < 30:
             return False
-        cc = cn = dc = dn = 0
+        if self.op.count("C") / n > 0.8:
+            return False
+        cnt = {}
         for t in range(1, n):
-            if self.me[t - 1] == "C":
-                cn += 1
-                cc += self.op[t] == "C"
-            else:
-                dn += 1
-                dc += self.op[t] == "C"
-        if cn < 8 or dn < 8:
-            return False
-        pc, pd = cc / cn, dc / dn
-        return pc - pd < 0.2 and pc < 0.85
+            k = (self.op[t - 1], self.me[t - 1])
+            c = cnt.setdefault(k, [0, 0])
+            c[0] += self.op[t] == "C"
+            c[1] += 1
+        tested = False
+        for x in "CD":
+            a, b = cnt.get((x, "C"), [0, 0]), cnt.get((x, "D"), [0, 0])
+            if a[1] < 6 or b[1] < 6:
+                continue
+            if abs(a[0] / a[1] - b[0] / b[1]) >= 0.2:
+                return False
+            tested = True
+        return tested
+
+    def after(self, mine, theirs):
+        """How often they cooperated right after a round (mine, theirs)."""
+        c = k = 0
+        for t in range(1, len(self.op)):
+            if self.me[t - 1] == mine and self.op[t - 1] == theirs:
+                k += 1
+                c += self.op[t] == "C"
+        return c, k
 
     # ------------------------------------------------------------ protocol
     def move(self):
@@ -130,12 +150,25 @@ class Bot:
         last_op = op[-1]
         if last_op == "C":
             return "C"
+        if n == self.followup:
+            return "C"
+
+        # Win-stay-lose-shift style opponents cooperate after mutual D and
+        # defect after being suckered.  If they've shown both, answer a
+        # mutual D with C: they'll play C too.
+        if me[-1] == "D":
+            c1, k1 = self.after("D", "D")
+            c2, k2 = self.after("D", "C")
+            if (k1 and k2 and c1 / k1 >= 0.5 and c2 / k2 < 0.5
+                    and self.pavlov_tries < 3 + n // 30):
+                self.pavlov_tries += 1
+                return "C"
 
         # C/D echo: (me D, them C) then (me C, them D).  Our retaliation
         # is being retaliated; take the sucker payoff once to stop it.
         if (n >= 2 and me[-2] == "D" and op[-2] == "C" and me[-1] == "C"):
-            budget = 3 + n // 20
-            if self.echo_forgives < budget and n - self.last_echo_forgive > 4:
+            gap = 4 if self.echo_forgives < 3 else 20
+            if n - self.last_echo_forgive > gap:
                 self.echo_forgives += 1
                 self.last_echo_forgive = n
                 return "C"
@@ -148,6 +181,9 @@ class Bot:
                     and op.count("C") / n > 0.15):
                 self.deadlock_tries += 1
                 self.last_deadlock_try = n
+                # a TFT-like bot answers this with D (copying our last D);
+                # cooperate once more so it can follow our C
+                self.followup = n + 1
                 return "C"
 
         return "D"

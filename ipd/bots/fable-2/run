@@ -53,6 +53,25 @@ class Bot:
             return "absorb"
         return None
 
+    def fresh_d_rule(self, w=30):
+        """True if, over the last w rounds, the opponent cooperated exactly
+        when my previous two moves were C then D (round-1 `luna`).  Against
+        that rule nothing beats 2.0/round, and alternating C/D gets it."""
+        me, op = self.me, self.op
+        t = len(me)
+        if t < 12:
+            return False
+        nc = nd = 0
+        for i in range(max(2, t - w), t):
+            pred = me[i - 1] == "D" and me[i - 2] == "C"
+            if pred != (op[i] == "C"):
+                return False
+            if pred:
+                nc += 1
+            else:
+                nd += 1
+        return nc >= 3 and nd >= 3
+
     def start_peace(self):
         self.mode = "tft"
         self.peace = 2
@@ -63,6 +82,11 @@ class Bot:
         if t == 0:
             return "C"
         me, op = self.me, self.op
+
+        if self.fresh_d_rule():
+            self.mode = "tft"
+            self.peace = 0
+            return "C" if me[-1] == "D" else "D"
 
         if self.mode == "probe":
             n = t - self.mode_start

@@ -7,6 +7,8 @@ def play():
     theirs = []
     # Count the opponent's next move after each of our actions.
     replies = {"C": [], "D": []}
+    after_mutual_defection = []
+    after_unopposed_defection = []
     repair_at = 0
     while True:
         move = "C"
@@ -32,6 +34,15 @@ def play():
                 pd = after_d.count("C") / len(after_d)
                 if pc < 0.78 and pc - pd < 0.18:
                     move = "D"
+            # Some opponents switch to C after DD and back to D after DC.
+            # Against that pattern, D takes the offered C and sets up another
+            # opportunity. Require recent evidence for both transitions.
+            if (
+                mine[-1] == "D"
+                and after_mutual_defection[-2:] == ["C", "C"]
+                and after_unopposed_defection[-2:] == ["D", "D"]
+            ):
+                move = "D"
             if len(mine) == repair_at and mine[-1] == "C" and repair_at:
                 repair_at = 3 * repair_at + 5
 
@@ -42,6 +53,11 @@ def play():
         opponent = line.strip()
         if mine:
             replies[mine[-1]].append(opponent)
+            if mine[-1] == "D":
+                if theirs[-1] == "D":
+                    after_mutual_defection.append(opponent)
+                else:
+                    after_unopposed_defection.append(opponent)
         mine.append(move)
         theirs.append(opponent)
 

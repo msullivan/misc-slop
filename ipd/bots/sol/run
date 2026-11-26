@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""A cooperative opening with retaliation, repair, and opponent modeling."""
+"""A cooperative opening with retaliation and repair."""
 
 import sys
 from collections import deque
@@ -10,7 +10,6 @@ def play():
     previous_move = None
     previous_opponent = None
     recent = deque(maxlen=12)
-    cooperative_replies = 0
     cooperation_streak = 0
     repair_cooldown = 0
     defensive = False
@@ -22,11 +21,6 @@ def play():
             return
         opponent = line.strip()
 
-        # Attribute their current move to our previous move, since the
-        # two moves in the current round were chosen simultaneously.
-        if previous_move == "D":
-            cooperative_replies = cooperative_replies + 1 if opponent == "C" else 0
-
         recent.append(opponent)
         cooperation_streak = cooperation_streak + 1 if opponent == "C" else 0
         repair_cooldown = max(0, repair_cooldown - 1)
@@ -36,7 +30,7 @@ def play():
         if cooperation_streak >= 5:
             defensive = False
 
-        if defensive or (opponent == "C" and cooperative_replies >= 3):
+        if defensive:
             next_move = "D"
         elif opponent == "C":
             next_move = "C"

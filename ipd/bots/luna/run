@@ -1,31 +1,39 @@
 #!/usr/bin/env python3
 import sys
+from collections import deque
 
-theirs = []
-round_no = 0
+recent_defections = deque(maxlen=8)
+defense_left = 0
+repair_left = 0
+defense_length = 2
 
 while True:
-    if round_no < 2:
-        move = "C"
-    elif round_no == 2:
-        # A single early probe distinguishes unconditional cooperators from
-        # players who answer defection with defection.
-        move = "D"
-    elif len(theirs) >= 2 and theirs[-1] == "D" and theirs[-2] == "D":
-        # Do not donate points indefinitely to a persistent defector.
-        move = "D"
-    elif theirs and theirs[-1] == "D":
-        # A single D is treated as a response to our probe; offer a repair.
-        move = "C"
-    else:
-        # If they keep cooperating, keep testing/exploiting; if they retaliate,
-        # the branch above switches back to cooperation.
-        move = "D"
-
+    move = "D" if defense_left else "C"
     print(move, flush=True)
-    line = sys.stdin.readline()
-    if not line:
+    response = sys.stdin.readline()
+    if not response:
         break
-    response = line.strip()
-    theirs.append(response if response in ("C", "D") else "D")
-    round_no += 1
+    cooperated = response.strip() == "C"
+
+    if defense_left:
+        defense_left -= 1
+        if not defense_left:
+            # Give delayed reciprocators two chances to see cooperation.
+            repair_left = 2
+        continue
+
+    if repair_left:
+        if cooperated:
+            defense_length = 2
+            repair_left = 0
+            recent_defections.clear()
+        else:
+            repair_left -= 1
+            if not repair_left:
+                defense_length = min(64, 2 * defense_length)
+                defense_left = defense_length
+        continue
+
+    recent_defections.append(not cooperated)
+    if sum(recent_defections) >= 2:
+        defense_left = defense_length

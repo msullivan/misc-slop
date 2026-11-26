@@ -2,6 +2,10 @@
 
 Layers, highest priority first:
 
+0. Model mode (round 2).  When my recent mean is poor, learn their reply as a
+   function of (my last two moves, their last move) and play the optimal
+   policy for that model; drop back to the layers below once play is calm.
+
 1. Overtures.  When the opponent has defected several rounds running (a
    mutual-defection lock, or an always-defector) play C twice; the wait before
    the next overture doubles each time one is refused.
@@ -29,6 +33,17 @@ ENTER_MARGIN = 0.4
 EXIT_MARGIN = 0.0
 MIN_ROUND = 10
 MIN_N = 4
+UNPROVOKED_MIN = 0.15   # detector needs them to defect this often unprovoked
+UNPROVOKED_OPP = 20     # ... out of at least this many chances
+
+# model mode: when the match is going badly, learn their reply as a function
+# of (my last two moves, their last move) and plan against that model.
+BAD_WINDOW = 20
+BAD_ENTER = 1.6         # mean points/round over BAD_WINDOW to switch on
+GOOD_EXIT = 2.6         # ... and to switch back to the base strategy,
+CALM_EXIT = 6           # once this many rounds running were mutual C
+MODEL_DECAY = 0.99
+GAMMA = 0.97
 
 TOL_PER_HIT = 2         # retaliations I absorb per D of mine that hit a C
 TOL_WINDOW = 5          # ... if they come within this many rounds of it
@@ -38,7 +53,7 @@ LOCK_WAIT = 4           # opponent D's in a row before an overture
 LOCK_WAIT_MAX = 64
 OFFER_LEN = 2
 
-PROBE_P = 0.2           # fraction of matches in which I probe
+PROBE_P = 0.0           # fraction of matches in which I probe (r1: 0.2)
 PROBE_FROM, PROBE_TO = 40, 100
 PROBE_CALM = 20         # rounds of unbroken mutual cooperation before probing
 EXPLOIT_GAPS = [5, 4, 3, 2, 1]
@@ -68,6 +83,9 @@ class Opus:
         self.unanswered = 0
         self.next_exploit = None
         self.apology = 0
+        self.points = []
+        self.model_on = False
+        self.counts = {}             # (m2, m1, o1) -> [weight C, weight D]
 
     # ------------------------------------------------------------ helpers
     def advantage(self):
@@ -83,6 +101,15 @@ class Opus:
                 n0 += 1
                 c0 += op[s + 1] == "C"
         if n1 < MIN_N or n0 < MIN_N:
+            return None
+        # Only an opponent that defects of its own accord is a candidate:
+        # count D's that followed two C's of mine.
+        u = k = 0
+        for s in range(max(2, n - WINDOW), n):
+            if my[s - 1] == "C" and my[s - 2] == "C":
+                k += 1
+                u += op[s] == "D"
+        if k < UNPROVOKED_OPP or u < UNPROVOKED_MIN * k:
             return None
         p1 = (c1 + 0.5) / (n1 + 1)
         p0 = (c0 + 0.5) / (n0 + 1)
@@ -153,6 +180,51 @@ class Opus:
                 return "D"
         return None
 
+    def learn(self):
+        """Fold the latest round into the opponent model."""
+        my, op = self.my, self.op
+        t = len(op)
+        for v in self.counts.values():
+            v[0] *= MODEL_DECAY
+            v[1] *= MODEL_DECAY
+        if t >= 3:
+            key = (my[t - 3], my[t - 2], op[t - 2])
+            self.counts.setdefault(key, [0.0, 0.0])[op[t - 1] == "D"] += 1
+
+    def p_coop(self, key, prior):
+        c, d = self.counts.get(key, (0.0, 0.0))
+        return (c + prior) / (c + d + 1.0)
+
+    def model_move(self):
+        """Best move under the learned memory-(2,1) model, by value iteration."""
+        keys = [(a, b, c) for a in "CD" for b in "CD" for c in "CD"]
+        recent = self.op[-BAD_WINDOW:]
+        prior = (recent.count("C") + 0.5) / (len(recent) + 1.0)
+        pc = {k: self.p_coop(k, prior) for k in keys}
+        v = {k: 0.0 for k in keys}
+        q = {}
+        for _ in range(200):
+            nv = {}
+            for k in keys:
+                _, m1, _ = k
+                p = pc[k]
+                best = None
+                for a in "CD":
+                    r = (p * (3 if a == "C" else 5)
+                         + (1 - p) * (0 if a == "C" else 1))
+                    val = r + GAMMA * (p * v[(m1, a, "C")]
+                                       + (1 - p) * v[(m1, a, "D")])
+                    q[(k, a)] = val
+                    if best is None or val > best:
+                        best = val
+                nv[k] = best
+            delta = max(abs(nv[k] - v[k]) for k in keys)
+            v = nv
+            if delta < 1e-3:
+                break
+        k = (self.my[-2], self.my[-1], self.op[-1])
+        return "C" if q[(k, "C")] >= q[(k, "D")] else "D"
+
     # ------------------------------------------------------------ main
     def next_move(self):
         t = len(self.my)
@@ -173,6 +245,17 @@ class Opus:
                 self.absorb_credit -= 1
         if self.calm(3):
             self.lock_wait = LOCK_WAIT
+        self.points.append({("C", "C"): 3, ("C", "D"): 0, ("D", "C"): 5,
+                            ("D", "D"): 1}[(my[-1], op[-1])])
+        self.learn()
+        if t >= BAD_WINDOW:
+            recent = sum(self.points[-BAD_WINDOW:]) / BAD_WINDOW
+            if not self.model_on and recent < BAD_ENTER:
+                self.model_on = True
+            elif self.model_on and recent > GOOD_EXIT and self.calm(CALM_EXIT):
+                self.model_on = False
+        if self.model_on and t >= 2:
+            return self.model_move()
 
         if self.offer_left > 0:
             self.offer_left -= 1

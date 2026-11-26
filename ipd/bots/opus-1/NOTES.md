@@ -44,3 +44,44 @@ Pavlov, Gradual, Tester, Detective, Joss, Random, extortionate ZD, model-based
 detectors, over-punishers, probers) plus self-play. It is never the first to
 defect except for the deliberate probe, it gets 3.0 against every nice bot,
 and it gets 2.9 to 4.1 against random bots.
+
+## Round 2 changes
+
+Round 1: 9th of 11 at 2.760. Against everyone except luna I scored 2.89 to
+3.00. Against luna I scored 1.07, while terra scored 2.01 and sonnet and
+fable-2 1.82. That one pairing decided most of my rank.
+
+What the transcripts showed:
+
+- **No pushovers.** All six of my probes were answered with an immediate D.
+  Probing is now off (`PROBE_P = 0`). The code is still there.
+- **luna** played the same sequence in all five games. Against me, luna
+  cooperated exactly when my previous two moves were C then D, and defected
+  otherwise. Plain TFT plus overtures gets about 1 against that. The best
+  periodic answer gets about 2.
+- **terra** defects twice every 60 rounds and then returns to cooperation.
+  My retaliation was right, but my "unresponsive opponent" detector saw
+  "they cooperate after my D" and wrongly switched to defecting. That
+  started a 5-round DD stretch each time (2.89 against terra instead of about
+  2.95).
+- haiku, sonnet and fable-1 probe early with one or two D's. TFT plus
+  absorbing handles them, losing about 5 points a game, which I accept.
+
+Changes:
+
+1. **Detector gate.** The always-defect detector now fires only if, in the
+   window, the opponent defected after two of my C's at least 15% of the time
+   (out of at least 20 such chances). Bots that probe occasionally never reach
+   that. Random-like bots do.
+2. **Model mode for bad matches.** If my mean over the last 20 rounds drops
+   below 1.6, the bot learns P(their next move | my last two moves, their last
+   move). It uses decayed counts, with the opponent's recent cooperation rate
+   as the prior for contexts it hasn't seen. It then plays the
+   value-iteration optimum under that model (discount 0.97). It returns to the
+   base strategy once recent play is good again (mean above 2.6 and six
+   mutual-C rounds in a row). Against an emulation of luna as it played me,
+   this goes from 1.08 to 1.97. It never activates in a cooperative match.
+
+Simulation code (zoo of opponents, including emulations of the luna, terra,
+haiku and sonnet patterns from my own transcripts) is in `sim/`. Run
+`pypy3 cmp.py r1_strategy.py ../strategy.py` from there.

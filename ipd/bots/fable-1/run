@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""fable-1: tit-for-tat core with echo forgiveness, peace offers, a reactive
-opponent model that switches to all-D against unresponsive opponents, and an
-occasional cautious probe for opponents that never retaliate. See NOTES.md."""
+"""fable-1: tit-for-tat core with echo forgiveness and peace offers; against
+opponents that do not reciprocate cooperation it switches to a learned
+two-round-history model of the opponent and plays the best reply to it.
+See NOTES.md."""
 import sys
-import random
 
-PROBE_PROB = 0.25          # fraction of matches in which we probe at all
+PAY = {('C', 'C'): 3, ('C', 'D'): 0, ('D', 'C'): 5, ('D', 'D'): 1}
+PRIOR_C = 0.1      # assumed P(opponent C) in a never-seen situation
+GAMMA = 0.95
 
 
 class Bot:
@@ -17,17 +19,14 @@ class Bot:
         self.qn, self.qc = 0.0, 0.0
         self.unprov = 0.0          # decayed count of unprovoked defections
         self.olive = 0             # forced-C rounds remaining
-        self.defect_mode = False
-        self.dm_since = 0
-        self.dm_gap = 25
+        self.model_mode = False
+        self.last_test = 0
+        self.test_gap = 25
         self.last_cc = 0           # last round of mutual cooperation
         self.peace_gap = 6
         self.next_peace = 6
-        # probing / exploitation state machine
-        self.probe_round = random.randint(8, 25) if random.random() < PROBE_PROB else None
-        self.stage = 'none'        # none, alt, full, apol, altf, off
-        self.stage_start = 0
-        self.apol_n = 0
+        # opponent model: (my[t-2], op[t-2], my[t-1], op[t-1]) -> [n, c]
+        self.model = {}
 
     # -- bookkeeping -------------------------------------------------------
     def observe(self):
@@ -40,6 +39,11 @@ class Bot:
             else:
                 self.qn = self.qn * 0.95 + 1
                 self.qc = self.qc * 0.95 + (resp == 'C')
+        if t >= 3:
+            key = (self.my[-3], self.op[-3], self.my[-2], self.op[-2])
+            e = self.model.setdefault(key, [0.0, 0.0])
+            e[0] = e[0] * 0.8 + 1
+            e[1] = e[1] * 0.8 + (self.op[-1] == 'C')
         self.unprov *= 0.98
         if self.op[-1] == 'D' and all(m == 'C' for m in self.my[-3:-1]):
             self.unprov += 1
@@ -54,51 +58,27 @@ class Bot:
     def q(self):
         return self.qc / self.qn if self.qn > 0 else 0.0
 
-    # -- exploitation of non-retaliators -----------------------------------
-    def exploit(self, t):
-        """Return a move, or None to fall through to the normal logic."""
-        if self.stage == 'none':
-            if (self.probe_round is not None and t >= self.probe_round
-                    and 'D' not in self.op and 'D' not in self.my):
-                self.stage, self.stage_start = 'alt', t
-                self.probe_round = None
-                return 'D'
-            return None
-        if self.stage == 'off':
-            return None
-        since = self.op[self.stage_start:]
-        if self.stage == 'alt':
-            if 'D' in since:
-                return self.stop()
-            k = t - self.stage_start
-            if k >= 6:
-                self.stage = 'full'
-                return 'D'
-            return 'D' if k % 2 == 0 else 'C'
-        if self.stage == 'full':
-            if self.op[-1] == 'D':
-                self.stage, self.apol_n = 'apol', 1
-                return 'C'
-            return 'D'
-        if self.stage == 'apol':
-            if self.op[-1] == 'C':
-                self.stage, self.stage_start = 'altf', t
-                return 'D'
-            self.apol_n += 1
-            if self.apol_n > 4:
-                return self.stop()
-            return 'C'
-        if self.stage == 'altf':
-            if 'D' in since:
-                return self.stop()
-            return 'D' if (t - self.stage_start) % 2 == 0 else 'C'
-        return None
+    # -- best reply to the learned model -------------------------------------
+    def pc_state(self, s):
+        e = self.model.get(s)
+        if not e:
+            return PRIOR_C
+        return (e[1] + 0.3 * PRIOR_C) / (e[0] + 0.3)
 
-    def stop(self):
-        self.stage = 'off'
-        self.qn = self.qc = 0.0    # those samples were bought by probing
-        self.unprov = 0.0
-        return None
+    def plan(self):
+        states = [(a, b, c, d) for a in 'CD' for b in 'CD' for c in 'CD' for d in 'CD']
+        pc = {s: self.pc_state(s) for s in states}
+        V = {s: 0.0 for s in states}
+
+        def qval(s, a):
+            x = pc[s]
+            return (x * (PAY[a, 'C'] + GAMMA * V[(s[2], s[3], a, 'C')])
+                    + (1 - x) * (PAY[a, 'D'] + GAMMA * V[(s[2], s[3], a, 'D')]))
+
+        for _ in range(120):
+            V = {s: max(qval(s, 'C'), qval(s, 'D')) for s in states}
+        s = (self.my[-2], self.op[-2], self.my[-1], self.op[-1])
+        return 'C' if qval(s, 'C') > qval(s, 'D') + 1e-9 else 'D'
 
     # -- main decision -------------------------------------------------------
     def move(self):
@@ -107,32 +87,35 @@ class Bot:
             return 'C'
         self.observe()
 
-        m = self.exploit(t)
-        if m is not None:
-            return m
-
         if self.olive > 0:
             self.olive -= 1
             return 'C'
 
         p, q = self.p(), self.q()
-        if self.defect_mode:
-            if self.qn >= 2.5 and 1 + 4 * q < 3 * p:
-                # they do punish defection and reward cooperation: make peace
-                self.defect_mode = False
+        if self.model_mode:
+            if t >= 10 and all(a == 'C' and b == 'C' for a, b in
+                               zip(self.my[-10:], self.op[-10:])):
+                self.model_mode = False        # stable peace: back to TFT
+            elif self.qn >= 2.5 and 1 + 4 * q < 3 * p and p > 0.8:
+                # they punish defection and reward cooperation: make peace
+                self.model_mode = False
                 self.olive = 1
                 return 'C'
-            if t - self.dm_since >= self.dm_gap:
-                # occasional test of whether cooperation is now reciprocated
-                self.dm_since = t
-                self.dm_gap = min(self.dm_gap * 2, 200)
-                return 'C'
-            return 'D'
-        if self.qn >= 2.5 and 1 + 4 * q > 3 * p + 0.5:
-            # defecting pays better than cooperating against this opponent
-            self.defect_mode = True
-            self.dm_since = t
-            return 'D'
+            else:
+                if 'C' in self.my[-self.test_gap:]:
+                    self.last_test = max(self.last_test,
+                                         t - 1 - self.my[::-1].index('C'))
+                if t - self.last_test >= self.test_gap:
+                    # all-D for a long while: test whether C is answered now
+                    self.last_test = t
+                    self.test_gap = min(self.test_gap * 2, 200)
+                    return 'C'
+                return self.plan()
+        elif self.qn >= 2.5 and p < 0.7 and 1 + 4 * q > 3 * p + 0.5:
+            # cooperation is not being reciprocated and defecting pays better
+            self.model_mode = True
+            self.last_test = t
+            return self.plan()
 
         if self.op[-1] == 'C':
             return 'C'

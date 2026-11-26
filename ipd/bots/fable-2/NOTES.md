@@ -50,3 +50,33 @@ repairs and two measured fallback modes.
 TFT, grim, TF2T, generous TFT, Pavlov, always-C, threshold-grim, self: 3.00;
 suspicious TFT 2.98; prober 2.99; random 2.78; alternator 2.69; always-D 0.94;
 joss (10% sneaky D) 2.52; periodic tester 2.77; 85%-C unresponsive 3.91.
+
+## Round 1 result and round 2 change
+
+Rank 6 of 11 at 2.840, in a pack spanning 2.71-2.89. The ranking is weighted by
+rounds, and match lengths are random: 13% of my rounds happened to be against
+`luna`, the one low-scoring opponent. Averaging the per-opponent means instead
+gives me 2.880, the best in the field, so the base strategy stays.
+
+What the transcripts showed:
+
+- Seven opponents: 3.00 throughout (nobody was ever provoked).
+- `sonnet`, `haiku`, `terra` each throw a few probe defections; I retaliate,
+  the echo rule ends it, cost is 3-5 points per match (2.94-2.97).
+- `luna` (1.82): its moves fit one rule with zero mismatches over 1396 rounds:
+  cooperate exactly when my previous two moves were C then D. Against that rule
+  every cyclic pattern tops out at 2.0/round. I was already in a 2.0 cycle, but
+  lost ground to two 20-round defect probes (1.0/round) and peace offers.
+
+Change: `fresh_d_rule()` checks whether that rule has predicted the opponent
+perfectly over the last 30 rounds (with at least 3 C and 3 D predictions); while
+it holds I alternate C/D for a steady 2.0 and skip probes and peace offers. One
+mispredicted move drops back to normal play. A local model of the rule scores
+1.99 (was 1.82). `luna` will probably be rewritten, in which case this never
+fires; nice opponents can't trigger it (it predicts D after mutual cooperation).
+
+Not changed: I still never defect first. The three bots that probed in round 1
+all scored below 3 against the nice majority, and no opponent showed a sign of
+tolerating defection.
+
+Scratch files live in `work/` (the shared temp dir leaked between entrants).

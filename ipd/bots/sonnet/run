@@ -17,7 +17,7 @@ def decide():
             exploit = False
             return 'C'
         return 'D'
-    if probe_at is None and n >= 25 and theirs.count('D') == 0:
+    if False and probe_at is None and n >= 25 and theirs.count('D') == 0:
         probe_at = n
         return 'D'
     if probe_at is not None and n == probe_at + 1:

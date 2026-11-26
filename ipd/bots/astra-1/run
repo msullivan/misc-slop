@@ -10,6 +10,8 @@ def play():
     mutual_defections = 0
     next_reset = 2
     reset_gap = 4
+    probe_age = None
+    delayed_replies = 0
 
     while True:
         print(move, flush=True)
@@ -22,6 +24,7 @@ def play():
         mutual_defections = mutual_defections + 1 if move == other == "D" else 0
         if move == other == "C":
             next_reset, reset_gap = 2, 4
+            delayed_replies = 0
 
         # Default to reciprocity, forgiving the echo of our own retaliation.
         action = other
@@ -37,8 +40,25 @@ def play():
         if cd >= 3 and dc >= 3 and p_d + 0.18 >= p_c:
             action = "D"
 
-        if mutual_defections == next_reset:
+        if probe_age == 0:
+            # An unanswered offer gets one defection while we wait for a reply.
+            probe_age = 1 if other == "D" else None
+            action = "D" if other == "D" else "C"
+        elif probe_age == 1:
+            # Stay with D for the round when a delayed reply could arrive.
+            probe_age = 2 if other == "D" else None
+            action = other
+            if other == "C":
+                delayed_replies = 0
+        elif probe_age == 2:
+            probe_age = None
+            delayed_replies = delayed_replies + 1 if other == "C" else 0
+            if delayed_replies >= 2:
+                action = "C"
+                probe_age = 0
+        elif mutual_defections == next_reset:
             action = "C"
+            probe_age = 0
             # Count a fresh streak after each olive branch.
             next_reset = reset_gap
             reset_gap = min(128, reset_gap * 2)
