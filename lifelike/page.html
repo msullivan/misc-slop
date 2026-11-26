@@ -1,0 +1,404 @@
+<title>Life-like Rule Atlas</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=JetBrains+Mono:wght@400;600&family=Inter:wght@400;600&display=swap">
+<style>
+/* Layout: a square plate of all 262,144 rules on the left, the selected rule's universe on the right, finds below. */
+:root {
+  color-scheme: dark;
+  --bg: #0c0e12; --panel: #14171d; --line: #262b35; --fg: #e8eaf0; --dim: #969cab;
+  --cell: #ffd45e; --accent: #ffd45e;
+  --f-die: #4a4f5b; --f-still: #338ced; --f-osc: #00a888; --f-ship: #d28e05; --f-grow: #e24d8b; --f-und: #9887ef;
+  --display: "Space Grotesk", "Inter", system-ui, sans-serif;
+  --body: "Inter", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+}
+body { background: var(--bg); color: var(--fg); font-family: var(--body); line-height: 1.45;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 20px 48px; }
+.wrap { max-width: 1240px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
+h1 { font-family: var(--display); font-size: 1.7rem; font-weight: 700; margin: 0; letter-spacing: -0.01em; }
+h2 { font-family: var(--display); font-size: 1.05rem; font-weight: 500; margin: 0; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 24px; }
+#stats { color: var(--dim); font-family: var(--mono); font-size: 0.82rem; font-variant-numeric: tabular-nums; }
+.main { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+.lower { display: grid; grid-template-columns: minmax(0, 380px) minmax(0, 1fr); gap: 20px; align-items: start; }
+@media (max-width: 860px) { .main, .lower { grid-template-columns: minmax(0, 1fr); } }
+section { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.seg { display: flex; flex-wrap: wrap; gap: 4px; }
+button { font: inherit; color: var(--fg); background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 4px 10px; cursor: pointer; }
+button:hover { border-color: var(--dim); }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+button[aria-pressed="true"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+.mapbox { position: relative; width: 100%; aspect-ratio: 1; max-width: 100%; background: var(--panel); border: 1px solid var(--line); }
+#map { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; cursor: crosshair; touch-action: manipulation; }
+#mark { position: absolute; width: 13px; height: 13px; margin: -7px 0 0 -7px; border: 2px solid #fff; border-radius: 50%; box-shadow: 0 0 0 1px #000; pointer-events: none; }
+#loading { position: absolute; inset: 0; display: grid; place-items: center; color: var(--dim); }
+.axis { display: flex; justify-content: space-between; color: var(--dim); font-size: 0.78rem; font-family: var(--mono); }
+#hover { font-family: var(--mono); font-size: 0.82rem; color: var(--dim); min-height: 1.3em; font-variant-numeric: tabular-nums; }
+#ramp { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 0.78rem; color: var(--dim); }
+#ramp i { flex: 1; height: 10px; max-width: 260px; border-radius: 2px; }
+.rulehead { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; }
+#rulename { font-family: var(--mono); font-weight: 600; font-size: 1.35rem; color: var(--accent); overflow-wrap: anywhere; }
+.bits { display: grid; grid-template-columns: auto repeat(9, minmax(0, 1fr)); gap: 3px; align-items: center; font-family: var(--mono); font-size: 0.82rem; }
+.bits span { color: var(--dim); padding-right: 6px; }
+.bits button { padding: 3px 0; }
+#fatebar { display: flex; gap: 2px; height: 14px; }
+#fatebar i { min-width: 0; border-radius: 2px; }
+#fatelegend { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 2px 14px; font-size: 0.82rem; }
+#fatelegend div { display: flex; align-items: center; gap: 6px; }
+#fatelegend i { width: 10px; height: 10px; border-radius: 2px; flex: none; }
+#fatelegend b { margin-left: auto; font-family: var(--mono); font-weight: 400; color: var(--dim); font-variant-numeric: tabular-nums; }
+.simrow { display: grid; grid-template-columns: minmax(0, 300px) minmax(0, 1fr); gap: 14px; align-items: start; }
+@media (max-width: 520px) { .simrow { grid-template-columns: minmax(0, 1fr); } }
+#sim { width: 100%; aspect-ratio: 1; image-rendering: pixelated; background: #07080b; border: 1px solid var(--line); display: block; }
+#simlabel { font-family: var(--mono); font-size: 0.82rem; color: var(--dim); min-height: 1.3em; }
+.list { display: flex; flex-direction: column; gap: 3px; max-height: 330px; overflow-y: auto; }
+.list button { display: flex; gap: 10px; text-align: left; font-family: var(--mono); font-size: 0.8rem; padding: 3px 8px; font-variant-numeric: tabular-nums; }
+.list button span:last-child { margin-left: auto; opacity: 0.7; white-space: nowrap; }
+.list button span:first-child { overflow-wrap: anywhere; min-width: 0; }
+.list p { margin: 0; color: var(--dim); font-size: 0.82rem; }
+.sub { color: var(--dim); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.06em; }
+#vel { width: 100%; height: auto; background: var(--panel); border: 1px solid var(--line); }
+#vel text { fill: var(--dim); font-family: var(--mono); font-size: 10px; }
+#vel line { stroke: var(--line); }
+#vel circle { fill: var(--f-ship); stroke: var(--panel); stroke-width: 1; cursor: pointer; }
+#vel circle:hover, #vel circle.on { fill: #fff; }
+#velhover { font-family: var(--mono); font-size: 0.82rem; color: var(--dim); min-height: 1.3em; }
+#notable { max-height: 420px; }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Life-like Rule Atlas</h1>
+    <div id="stats"></div>
+  </header>
+
+  <div class="main">
+    <section>
+      <div class="seg" id="layers" role="group" aria-label="Map layer">
+        <button id="layer-fate" data-l="fate">Fates</button>
+        <button id="layer-ship" data-l="ship">Spaceship share</button>
+        <button id="layer-kinds" data-l="kinds">Spaceship kinds</button>
+        <button id="layer-period" data-l="period">Longest period</button>
+        <button id="layer-und" data-l="und">Undecided</button>
+      </div>
+      <div class="axis"><span>birth counts → (B0 in the right half)</span><span>survival counts ↓ (S0 in the bottom half)</span></div>
+      <div class="mapbox">
+        <canvas id="map" width="512" height="512" aria-label="Map of all 262,144 rules"></canvas>
+        <div id="mark" hidden></div>
+        <div id="loading">Loading census…</div>
+      </div>
+      <div id="ramp" hidden><span id="ramplo"></span><i id="rampbar"></i><span id="ramphi"></span></div>
+      <div id="hover"></div>
+    </section>
+
+    <section>
+      <div class="rulehead"><div id="rulename">B3/S23</div><div id="simlabel"></div></div>
+      <div class="bits" id="bits"></div>
+      <div id="fatebar"></div>
+      <div id="fatelegend"></div>
+      <div class="simrow">
+        <div style="display:flex;flex-direction:column;gap:8px;min-width:0">
+          <canvas id="sim" width="128" height="128"></canvas>
+          <div class="seg">
+            <button id="btn-play">Pause</button>
+            <button id="btn-step">Step</button>
+            <button id="btn-restart">Restart</button>
+            <button id="btn-seed">Its seed</button>
+            <button id="btn-soup">Soup</button>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px;min-width:0">
+          <div class="sub">Spaceships</div>
+          <div class="list" id="shiplist"></div>
+          <div class="sub">Oscillators</div>
+          <div class="list" id="osclist"></div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div class="lower">
+    <section>
+      <h2>Velocities</h2>
+      <svg id="vel" viewBox="0 0 360 330" role="img" aria-label="Every spaceship velocity found"></svg>
+      <div id="velhover"></div>
+    </section>
+    <section>
+      <div class="seg" id="tabs" role="group" aria-label="Finds">
+        <button id="tab-oblique" data-t="oblique">Oblique ships</button>
+        <button id="tab-slow" data-t="slow">Slowest ships</button>
+        <button id="tab-longship" data-t="longship">Longest-period ships</button>
+        <button id="tab-longosc" data-t="longosc">Longest oscillators</button>
+        <button id="tab-kinds" data-t="kinds">Most kinds</button>
+        <button id="tab-velocity" data-t="velocity" hidden>Velocity</button>
+      </div>
+      <div class="list" id="notable"></div>
+    </section>
+  </div>
+</div>
+
+<script>
+const META = /*META*/null;
+const $ = id => document.getElementById(id);
+const FATES = [["Dies out", "--f-die"], ["Still life", "--f-still"], ["Oscillator", "--f-osc"], ["Spaceship", "--f-ship"], ["Grows without bound", "--f-grow"], ["Undecided at 4,096 gens", "--f-und"]];
+const css = getComputedStyle(document.documentElement);
+const hex = v => { v = v.trim(); return [1, 3, 5].map(i => parseInt(v.slice(i, i + 2), 16)); };
+const FCOL = FATES.map(f => hex(css.getPropertyValue(f[1])));
+const RAMP = ["#0e3d7e", "#1757ac", "#257de0", "#6aabf1", "#cce3fd"].map(hex), ZERO = [20, 23, 29];
+const rev9 = x => { let r = 0; for (let i = 0; i < 9; i++) if (x >> i & 1) r |= 256 >> i; return r; };
+const ruleStr = r => "B" + [...Array(9).keys()].filter(i => r >> i & 1).join("") + "/S" + [...Array(9).keys()].filter(i => r >> (9 + i) & 1).join("");
+const fmt = n => n.toLocaleString("en-US");
+const pct = x => x === 0 ? "0" : x < 0.0001 ? "<0.01%" : (x * 100).toFixed(x < 0.01 ? 2 : 1) + "%";
+const velName = (a, b, p) => b === 0 ? `${a === 1 ? "" : a}c/${p} orthogonal` : a === b ? `${a === 1 ? "" : a}c/${p} diagonal` : `(${a},${b})c/${p} oblique`;
+
+let R = null, FINDS = new Map(), layer = "fate", rule = 8 | 12 << 9, tab = "oblique", velRows = [];
+
+// ---------- map ----------
+const LAYERS = {
+  ship:   { v: r => R[r * 8 + 3] / 65535, lo: 1 / 65536, hi: 1, log: true, show: pct, name: "of seeds become a spaceship" },
+  kinds:  { v: r => R[r * 8 + 7], lo: 1, hi: 8, log: true, show: x => x + "", name: "kinds of spaceship" },
+  period: { v: r => R[r * 8 + 6], lo: 1, hi: 4096, log: true, show: x => "period " + x, name: "longest oscillator period" },
+  und:    { v: r => R[r * 8 + 5] / 65535, lo: 1 / 65536, hi: 1, log: true, show: pct, name: "of seeds undecided" },
+};
+function rampColor(t) {
+  t = Math.max(0, Math.min(1, t)) * (RAMP.length - 1);
+  const i = Math.min(RAMP.length - 2, Math.floor(t)), f = t - i;
+  return RAMP[i].map((c, k) => c + (RAMP[i + 1][k] - c) * f);
+}
+function drawMap() {
+  const ctx = $("map").getContext("2d"), img = ctx.createImageData(512, 512), d = img.data, L = LAYERS[layer];
+  for (let y = 0; y < 512; y++) for (let x = 0; x < 512; x++) {
+    const r = rev9(x) | rev9(y) << 9, o = (y * 512 + x) * 4;
+    let c;
+    if (layer === "fate") {
+      c = [0, 0, 0];
+      for (let f = 0; f < 6; f++) { const w = R[r * 8 + f] / 65535; for (let k = 0; k < 3; k++) c[k] += FCOL[f][k] * w; }
+    } else {
+      const v = L.v(r);
+      c = v <= 0 ? ZERO : rampColor(Math.log(v / L.lo) / Math.log(L.hi / L.lo));
+    }
+    d[o] = c[0]; d[o + 1] = c[1]; d[o + 2] = c[2]; d[o + 3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+  for (const b of $("layers").children) b.setAttribute("aria-pressed", b.dataset.l === layer);
+  $("ramp").hidden = layer === "fate";
+  if (L) {
+    $("ramplo").textContent = L.show(L.lo); $("ramphi").textContent = L.show(L.hi) + (layer === "kinds" ? "+" : "") + " · " + L.name;
+    $("rampbar").style.background = "linear-gradient(90deg," + [0, .25, .5, .75, 1].map(t => `rgb(${rampColor(t).map(Math.round)})`) + ")";
+  }
+}
+function mapRule(ev) {
+  const b = $("map").getBoundingClientRect();
+  const x = Math.max(0, Math.min(511, Math.floor((ev.clientX - b.left) / b.width * 512)));
+  const y = Math.max(0, Math.min(511, Math.floor((ev.clientY - b.top) / b.height * 512)));
+  return rev9(x) | rev9(y) << 9;
+}
+function describe(r) {
+  const f = [...Array(6).keys()].map(i => R[r * 8 + i] / 65535);
+  const top = f.indexOf(Math.max(...f));
+  let s = `${ruleStr(r)} · ${FATES[top][0].toLowerCase()} ${pct(f[top])}`;
+  if (R[r * 8 + 7]) s += ` · ${R[r * 8 + 7]} spaceship kind${R[r * 8 + 7] > 1 ? "s" : ""} (${pct(f[3])})`;
+  if (R[r * 8 + 6] > 1) s += ` · oscillators to period ${R[r * 8 + 6]}`;
+  return s;
+}
+$("map").addEventListener("pointermove", ev => { if (R) $("hover").textContent = describe(mapRule(ev)); });
+$("map").addEventListener("pointerleave", () => { if (R) $("hover").textContent = describe(rule); });
+$("map").addEventListener("click", ev => { if (R) select(mapRule(ev)); });
+$("layers").addEventListener("click", ev => { const l = ev.target.dataset.l; if (l && R) { layer = l; drawMap(); } });
+
+// ---------- simulation ----------
+let N = 128;
+const sim = { g: new Uint8Array(N * N), t: new Uint8Array(N * N), vac: 0, gen: 0, playing: !matchMedia("(prefers-reduced-motion: reduce)").matches, init: null, label: "" };
+const sctx = $("sim").getContext("2d"); let simg = sctx.createImageData(N, N);
+const CELL = hex(css.getPropertyValue("--cell"));
+function simLoad(cells, w, h, vac, label, n = 128) {   // cells: array of [x,y] differing from vacuum
+  sim.init = { cells, w, h, vac, label, n };
+  if (n !== N) { N = n; sim.g = new Uint8Array(N * N); sim.t = new Uint8Array(N * N); $("sim").width = $("sim").height = N; simg = sctx.createImageData(N, N); }
+  sim.g.fill(vac); sim.vac = vac; sim.gen = 0; sim.label = label;
+  const ox = (N - w) >> 1, oy = (N - h) >> 1;
+  for (const [x, y] of cells) sim.g[(oy + y) * N + ox + x] = vac ^ 1;
+  simDraw();
+}
+function simStep() {
+  const g = sim.g, t = sim.t;
+  for (let y = 0; y < N; y++) {
+    const u = ((y + N - 1) % N) * N, m = y * N, d = ((y + 1) % N) * N;
+    for (let x = 0; x < N; x++) {
+      const l = (x + N - 1) % N, r = (x + 1) % N;
+      const n = g[u + l] + g[u + x] + g[u + r] + g[m + l] + g[m + r] + g[d + l] + g[d + x] + g[d + r];
+      t[m + x] = g[m + x] ? rule >> (9 + n) & 1 : rule >> n & 1;
+    }
+  }
+  sim.g = t; sim.t = g; sim.vac = sim.vac ? rule >> 17 & 1 : rule & 1; sim.gen++;
+}
+function simDraw() {
+  const d = simg.data, g = sim.g, v = sim.vac;
+  for (let i = 0; i < N * N; i++) {
+    const on = g[i] !== v, o = i * 4;
+    d[o] = on ? CELL[0] : 7; d[o + 1] = on ? CELL[1] : 8; d[o + 2] = on ? CELL[2] : 11; d[o + 3] = 255;
+  }
+  sctx.putImageData(simg, 0, 0);
+  $("simlabel").textContent = sim.label + " · gen " + sim.gen;
+}
+let last = 0;
+function frame(ts) {
+  if (sim.playing && sim.init && ts - last > 45) { last = ts; simStep(); simDraw(); }
+  requestAnimationFrame(frame);
+}
+function decodePat(pat, w, h) {
+  const A = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_", cells = [];
+  for (let i = 0; i < w * h; i++) if (A.indexOf(pat[Math.floor(i / 6)]) >> (5 - i % 6) & 1) cells.push([i % w, Math.floor(i / w)]);
+  return cells;
+}
+const M64 = (1n << 64n) - 1n;
+function mix(x) {
+  x = (x + 0x9E3779B97F4A7C15n) & M64; x = ((x ^ (x >> 30n)) * 0xBF58476D1CE4E5B9n) & M64;
+  x = ((x ^ (x >> 27n)) * 0x94D049BB133111EBn) & M64; return x ^ (x >> 31n);
+}
+function makeSeed(rule, s) {   // must match make_seed() in core.h
+  const k = mix(BigInt(rule) << 32n | BigInt(s));
+  const w = 3 + Number(k & 7n), h = 3 + Number(k >> 3n & 7n), d = Number(k >> 6n & 3n), cells = [];
+  for (let i = 0; i < h; i++) {
+    const a = mix(k + BigInt(3 * i + 1) & M64), b = mix(k + BigInt(3 * i + 2) & M64), c = mix(k + BigInt(3 * i + 3) & M64);
+    const r = d === 0 ? a & b : d === 1 ? a & (b | c) : d === 2 ? a : a | (b & c);
+    for (let x = 0; x < w; x++) if (r >> BigInt(x) & 1n) cells.push([x, i]);
+  }
+  return { cells, w, h };
+}
+function soup() {
+  const cells = [];
+  for (let y = 0; y < 40; y++) for (let x = 0; x < 40; x++) if (Math.random() < 0.5) cells.push([x, y]);
+  current = null; markLists();
+  simLoad(cells, 40, 40, 0, "random soup");
+}
+$("btn-play").onclick = () => { sim.playing = !sim.playing; $("btn-play").textContent = sim.playing ? "Pause" : "Play"; };
+$("btn-step").onclick = () => { if (sim.init) { simStep(); simDraw(); } };
+$("btn-restart").onclick = () => { const i = sim.init; if (i) simLoad(i.cells, i.w, i.h, i.vac, i.label, i.n); };
+$("btn-soup").onclick = () => { if (R) soup(); };
+$("btn-seed").onclick = () => { if (current) { const s = makeSeed(rule, current.seed); simLoad(s.cells, s.w, s.h, 0, "seed #" + current.seed + " of " + current.name); } };
+$("btn-play").textContent = sim.playing ? "Pause" : "Play";
+
+// ---------- rule panel ----------
+let current = null;   // {kind, key, seed, name}
+function markLists() {
+  for (const b of document.querySelectorAll("#shiplist button, #osclist button")) b.setAttribute("aria-pressed", !!current && b.dataset.key === current.key);
+  $("btn-seed").disabled = !current;
+}
+function playShip(e) {
+  current = { key: `s${e[0]},${e[1]},${e[2]}`, seed: e[4], name: velName(e[0], e[1], e[2]) };
+  simLoad(decodePat(e[9], e[7], e[8]), e[7], e[8], e[6], current.name + ` · ${e[10]} cells min`, 64); markLists();
+}
+function playOsc(e) {
+  current = { key: "o" + e[0], seed: e[2], name: "period-" + e[0] + " oscillator" };
+  simLoad(decodePat(e[7], e[5], e[6]), e[5], e[6], e[4], current.name, 64); markLists();
+}
+function select(r, want) {
+  rule = r;
+  const nm = ruleStr(r);
+  $("rulename").textContent = nm;
+  try { history.replaceState(null, "", "#" + nm.replace("/", "-")); } catch (e) {}
+  for (const b of $("bits").querySelectorAll("button")) b.setAttribute("aria-pressed", !!(r >> +b.dataset.bit & 1));
+  const f = [...Array(6).keys()].map(i => R[r * 8 + i] / 65535), tot = f.reduce((a, b) => a + b, 0) || 1;
+  $("fatebar").innerHTML = f.map((x, i) => x ? `<i style="flex:${x / tot} 1 0;background:var(${FATES[i][1]})" title="${FATES[i][0]} ${pct(x)}"></i>` : "").join("");
+  $("fatelegend").innerHTML = FATES.map((F, i) => `<div><i style="background:var(${F[1]})"></i>${F[0]}<b>${pct(f[i])}</b></div>`).join("");
+  const x = rev9(r & 511), y = rev9(r >> 9);
+  $("mark").hidden = false; $("mark").style.left = (x + .5) / 5.12 + "%"; $("mark").style.top = (y + .5) / 5.12 + "%";
+  $("hover").textContent = describe(r);
+  const [, ships, oscs] = FINDS.get(r) || [r, [], []];
+  const sl = $("shiplist"), ol = $("osclist"); sl.innerHTML = ""; ol.innerHTML = "";
+  for (const e of ships) {
+    const b = document.createElement("button"); b.dataset.key = `s${e[0]},${e[1]},${e[2]}`;
+    b.innerHTML = `<span>${velName(e[0], e[1], e[2])}</span><span>${fmt(e[3])} seed${e[3] > 1 ? "s" : ""}</span>`;
+    b.onclick = () => playShip(e); sl.append(b);
+  }
+  if (!ships.length) sl.innerHTML = "<p>None found</p>";
+  for (const e of oscs) {
+    const b = document.createElement("button"); b.dataset.key = "o" + e[0];
+    b.innerHTML = `<span>period ${e[0]}</span><span>${fmt(e[1])} seed${e[1] > 1 ? "s" : ""}</span>`;
+    b.onclick = () => playOsc(e); ol.append(b);
+  }
+  if (!oscs.length) ol.innerHTML = `<p>${R[r * 8 + 6] === 2 ? "Period 2 only" : "None found"}</p>`;
+  let e;
+  if (want && want.kind === "ship" && (e = ships.find(e => e[0] === want.a && e[1] === want.b && e[2] === want.p))) playShip(e);
+  else if (want && want.kind === "osc" && (e = oscs.find(e => e[0] === want.p))) playOsc(e);
+  else if (ships.length) playShip(ships[0]);
+  else if (oscs.length) playOsc(oscs[0]);
+  else soup();
+}
+(function bits() {
+  let h = "";
+  for (const [lab, off] of [["B", 0], ["S", 9]]) { h += `<span>${lab}</span>`; for (let i = 0; i < 9; i++) h += `<button id="bit-${off + i}" data-bit="${off + i}" aria-label="${lab}${i}">${i}</button>`; }
+  $("bits").innerHTML = h;
+  $("bits").addEventListener("click", ev => { const b = ev.target.dataset.bit; if (b !== undefined && R) select(rule ^ 1 << +b); });
+})();
+
+// ---------- finds ----------
+function rowButton(r, text, right, want) {
+  const b = document.createElement("button");
+  b.innerHTML = `<span>${ruleStr(r)}</span><span>${text}</span><span>${right}</span>`;
+  b.onclick = () => { select(r, want); $("rulename").scrollIntoView({ block: "nearest", behavior: "smooth" }); };
+  return b;
+}
+function drawTab() {
+  for (const b of $("tabs").children) b.setAttribute("aria-pressed", b.dataset.t === tab);
+  const el = $("notable"); el.innerHTML = "";
+  const seeds = n => `${fmt(n)} seed${n > 1 ? "s" : ""}`;
+  if (tab === "velocity") for (const [r, a, b, p, n] of velRows) el.append(rowButton(r, velName(a, b, p), seeds(n), { kind: "ship", a, b, p }));
+  else if (tab === "longosc") for (const [r, p, n] of META.notable.longosc) el.append(rowButton(r, "period " + p, seeds(n), { kind: "osc", p }));
+  else if (tab === "kinds") for (const [r, n] of META.notable.kinds) el.append(rowButton(r, n + " kinds", "", null));
+  else for (const [r, a, b, p, n] of META.notable[tab]) el.append(rowButton(r, velName(a, b, p), seeds(n), { kind: "ship", a, b, p }));
+}
+$("tabs").addEventListener("click", ev => { const t = ev.target.dataset.t; if (t) { tab = t; drawTab(); } });
+
+function drawVel() {
+  const gcd = (a, b) => b ? gcd(b, a % b) : a, groups = new Map();
+  for (const [r, ships] of FINDS.values()) for (const e of ships) {
+    const g = gcd(gcd(e[0], e[1]), e[2]), k = `${e[0] / g},${e[1] / g},${e[2] / g}`;
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push([r, e[0], e[1], e[2], e[3]]);
+  }
+  const X = v => 40 + v * 300, Y = v => 290 - v * 300, svg = $("vel");
+  let h = `<line x1="${X(0)}" y1="${Y(0)}" x2="${X(1)}" y2="${Y(0)}"/><line x1="${X(0)}" y1="${Y(0)}" x2="${X(1)}" y2="${Y(1)}"/><line x1="${X(1)}" y1="${Y(0)}" x2="${X(1)}" y2="${Y(1)}"/>`;
+  for (const [t, l] of [[0, "0"], [1 / 4, "c/4"], [1 / 3, "c/3"], [1 / 2, "c/2"], [2 / 3, "2c/3"], [1, "c"]])
+    h += `<line x1="${X(t)}" y1="${Y(0)}" x2="${X(t)}" y2="${Y(0) + 4}"/><text x="${X(t)}" y="${Y(0) + 16}" text-anchor="middle">${l}</text>`;
+  h += `<text x="${X(.5)}" y="${Y(0) + 32}" text-anchor="middle">speed along the long axis</text><text x="${X(.36)}" y="${Y(.5)}" text-anchor="end">diagonal</text><text x="${X(.02)}" y="${Y(.9)}">short axis ↑</text>`;
+  const pts = [...groups.entries()].sort((a, b) => b[1].length - a[1].length);
+  for (const [k, rows] of pts) {
+    const [a, b, p] = k.split(",").map(Number);
+    h += `<circle cx="${X(a / p)}" cy="${Y(b / p)}" r="${2.5 + Math.log10(rows.length) * 1.6}" data-k="${k}" tabindex="0"><title>${velName(a, b, p)}: ${fmt(rows.length)} rule finds</title></circle>`;
+  }
+  svg.innerHTML = h;
+  const pick = (ev, go) => {
+    const k = ev.target.dataset && ev.target.dataset.k; if (!k) return;
+    const [a, b, p] = k.split(",").map(Number), rows = groups.get(k);
+    $("velhover").textContent = `${velName(a, b, p)} · ${fmt(rows.length)} find${rows.length > 1 ? "s" : ""}`;
+    if (go) {
+      for (const c of svg.querySelectorAll("circle.on")) c.classList.remove("on");
+      ev.target.classList.add("on");
+      velRows = rows.slice().sort((x, y) => y[4] - x[4]).slice(0, 300);
+      $("tab-velocity").hidden = false; $("tab-velocity").textContent = velName(a, b, p); tab = "velocity"; drawTab();
+    }
+  };
+  svg.addEventListener("pointerover", ev => pick(ev, false));
+  svg.addEventListener("click", ev => pick(ev, true));
+  svg.addEventListener("keydown", ev => { if (ev.key === "Enter") pick(ev, true); });
+}
+
+// ---------- boot ----------
+function fromHash() {
+  const m = /^#B(\d*)-S(\d*)$/.exec(location.hash); if (!m) return null;
+  let r = 0; for (const c of m[1]) if (c < "9") r |= 1 << +c; for (const c of m[2]) if (c < "9") r |= 1 << (9 + +c);
+  return r;
+}
+$("stats").textContent = `262,144 rules · ${fmt(META.nseed)} seeds each · ${fmt(META.jobs)} runs · ${fmt(META.shipRules)} rules with spaceships · ${META.velocities} kinds of spaceship`;
+drawTab();
+Promise.all([fetch("rules.b64.txt").then(r => r.text()).then(t => Uint8Array.from(atob(t), c => c.charCodeAt(0)).buffer), fetch("finds.json").then(r => r.json())]).then(([buf, finds]) => {
+  R = new Uint16Array(buf);
+  for (const f of finds) FINDS.set(f[0], f);
+  $("loading").hidden = true;
+  drawMap(); drawVel();
+  const h = fromHash(); select(h === null ? rule : h);
+  addEventListener("hashchange", () => { const h = fromHash(); if (h !== null && h !== rule) select(h); });
+  requestAnimationFrame(frame);
+}).catch(e => { $("loading").textContent = "Could not load the census data."; });
+</script>
