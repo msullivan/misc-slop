@@ -47,7 +47,10 @@ button[aria-pressed="true"] { background: var(--fg); color: var(--bg); border-co
 #fatebar { display: flex; gap: 2px; height: 14px; }
 #fatebar i { min-width: 0; border-radius: 2px; }
 #fatelegend { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 2px 14px; font-size: 0.82rem; }
-#fatelegend div { display: flex; align-items: center; gap: 6px; }
+#fatelegend button { display: flex; align-items: center; gap: 6px; text-align: left; padding: 1px 6px; margin: 0 -6px; background: none; border-color: transparent; }
+#fatelegend button:hover:not(:disabled) { border-color: var(--dim); }
+#fatelegend button:disabled { cursor: default; color: var(--dim); }
+#fatelegend button[aria-pressed="true"] { background: var(--panel); color: var(--fg); border-color: var(--dim); }
 #fatelegend i { width: 10px; height: 10px; border-radius: 2px; flex: none; }
 #fatelegend b { margin-left: auto; font-family: var(--mono); font-weight: 400; color: var(--dim); font-variant-numeric: tabular-nums; }
 .simrow { display: grid; grid-template-columns: minmax(0, 300px) minmax(0, 1fr); gap: 14px; align-items: start; }
@@ -154,7 +157,7 @@ const fmt = n => n.toLocaleString("en-US");
 const pct = x => x === 0 ? "0" : x < 0.0001 ? "<0.01%" : (x * 100).toFixed(x < 0.01 ? 2 : 1) + "%";
 const velName = (a, b, p) => b === 0 ? `${a === 1 ? "" : a}c/${p} orthogonal` : a === b ? `${a === 1 ? "" : a}c/${p} diagonal` : `(${a},${b})c/${p} oblique`;
 
-let R = null, FINDS = new Map(), layer = "fate", rule = 8 | 12 << 9, tab = "oblique", velRows = [];
+let R = null, EX = null, FINDS = new Map(), layer = "fate", rule = 8 | 12 << 9, tab = "oblique", velRows = [];
 
 // ---------- map ----------
 const LAYERS = {
@@ -284,7 +287,7 @@ $("btn-play").textContent = sim.playing ? "Pause" : "Play";
 // ---------- rule panel ----------
 let current = null;   // {kind, key, seed, name}
 function markLists() {
-  for (const b of document.querySelectorAll("#shiplist button, #osclist button")) b.setAttribute("aria-pressed", !!current && b.dataset.key === current.key);
+  for (const b of document.querySelectorAll("#shiplist button, #osclist button, #fatelegend button")) b.setAttribute("aria-pressed", !!current && b.dataset.key === current.key);
   $("btn-seed").disabled = !current;
 }
 function playShip(e) {
@@ -295,6 +298,13 @@ function playOsc(e) {
   current = { key: "o" + e[0], seed: e[2], name: "period-" + e[0] + " oscillator" };
   simLoad(decodePat(e[7], e[5], e[6]), e[5], e[6], e[4], current.name, 64); markLists();
 }
+function playFate(i) {   // the first seed of this rule that ends this way
+  if (!EX || !R[rule * 8 + i]) return;
+  const seed = EX[rule * 6 + i], s = makeSeed(rule, seed);
+  current = { key: "f" + i, seed, name: ruleStr(rule) };
+  simLoad(s.cells, s.w, s.h, 0, `seed #${seed} · ${FATES[i][0].toLowerCase()}`); markLists();
+}
+$("fatelegend").addEventListener("click", ev => { const b = ev.target.closest("button"); if (b && !b.disabled) playFate(+b.dataset.f); });
 function select(r, want) {
   rule = r;
   const nm = ruleStr(r);
@@ -303,7 +313,7 @@ function select(r, want) {
   for (const b of $("bits").querySelectorAll("button")) b.setAttribute("aria-pressed", !!(r >> +b.dataset.bit & 1));
   const f = [...Array(6).keys()].map(i => R[r * 8 + i] / 65535), tot = f.reduce((a, b) => a + b, 0) || 1;
   $("fatebar").innerHTML = f.map((x, i) => x ? `<i style="flex:${x / tot} 1 0;background:var(${FATES[i][1]})" title="${FATES[i][0]} ${pct(x)}"></i>` : "").join("");
-  $("fatelegend").innerHTML = FATES.map((F, i) => `<div><i style="background:var(${F[1]})"></i>${F[0]}<b>${pct(f[i])}</b></div>`).join("");
+  $("fatelegend").innerHTML = FATES.map((F, i) => `<button data-f="${i}" data-key="f${i}"${f[i] && EX ? "" : " disabled"}><i style="background:var(${F[1]})"></i>${F[0]}<b>${pct(f[i])}</b></button>`).join("");
   const x = rev9(r & 511), y = rev9(r >> 9);
   $("mark").hidden = false; $("mark").style.left = (x + .5) / 5.12 + "%"; $("mark").style.top = (y + .5) / 5.12 + "%";
   $("hover").textContent = describe(r);
@@ -395,8 +405,9 @@ function fromHash() {
 }
 $("stats").textContent = `262,144 rules · ${fmt(META.nseed)} seeds each · ${fmt(META.jobs)} runs · ${fmt(META.shipRules)} rules with spaceships · ${META.velocities} kinds of spaceship`;
 drawTab();
-Promise.all([fetch("rules.b64.txt").then(r => r.text()).then(t => Uint8Array.from(atob(t), c => c.charCodeAt(0)).buffer), fetch("finds.json").then(r => r.json())]).then(([buf, finds]) => {
-  R = new Uint16Array(buf);
+const b64 = f => fetch(f).then(r => r.text()).then(t => Uint8Array.from(atob(t), c => c.charCodeAt(0)).buffer);
+Promise.all([b64("rules.b64.txt"), fetch("finds.json").then(r => r.json()), b64("examples.b64.txt")]).then(([buf, finds, ex]) => {
+  R = new Uint16Array(buf); EX = new Uint16Array(ex);
   for (const f of finds) FINDS.set(f[0], f);
   $("loading").hidden = true;
   drawMap(); drawVel();

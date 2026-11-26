@@ -38,11 +38,13 @@ to build if any row failed that check.
 
     gcc -O2 census.c -o census -lOpenCL
     gcc -O2 -fopenmp extract.c -o extract
+    gcc -O2 -fopenmp examples.c -o examples
     mkdir -p out
     ./tempmon.sh out/temps.log &     # optional: log CPU/GPU temperature and power
     ./census 65536 4096 0 262144 out/c64k
     ./extract ships 4096 < out/c64k.ships.tsv > out/c64k.ships.x.tsv
     awk 'NR>1 && $2>=3' out/c64k.osc.tsv | ./extract osc 4096 > out/c64k.osc.x.tsv
+    ./examples out/c64k.rules.tsv 65536 4096 out/c64k.examples.bin
     python3 build_site.py out/c64k 65536
     cd site && python3 -m http.server 8799
 
@@ -53,4 +55,6 @@ to build if any row failed that check.
 - Periods above about 2,048 cannot be detected within 4,096 generations, so
   the longest-oscillator list is capped there.
 - `rules.b64.txt` is the per-rule table (8 little-endian u16 per rule) in base64.
+- `examples.b64.txt` is, per rule, the first seed that ends each of the six
+  ways (6 little-endian u16, 0xffff for none), found by `examples.c` on the CPU.
 - Bounded patterns larger than 40x40 count as "grows".

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Turn census output into the site: rules.bin, finds.json, index.html.
-Usage: build_site.py PREFIX NSEED   (expects PREFIX.rules.tsv, PREFIX.ships.x.tsv, PREFIX.osc.x.tsv)"""
+"""Turn census output into the site: rules, example seeds, finds.json, index.html.
+Usage: build_site.py PREFIX NSEED   (expects PREFIX.rules.tsv, PREFIX.ships.x.tsv, PREFIX.osc.x.tsv, PREFIX.examples.bin)"""
 import sys, json, struct, collections, os
 prefix, nseed = sys.argv[1], int(sys.argv[2])
 NR = 1 << 18
@@ -37,6 +37,15 @@ assert nrules == NR
 import base64
 open("site/rules.b64.txt", "wb").write(base64.b64encode(out))   # base64 so any static host serves it as text
 
+# First seed that meets each fate, from examples.c: 6 u16 per rule.
+ex = open(prefix + ".examples.bin", "rb").read()
+assert len(ex) == NR * 12
+for r in range(NR):
+    for i in range(6):
+        has = out[r * 16 + 2 * i] | out[r * 16 + 2 * i + 1]
+        assert bool(has) == (ex[r * 12 + 2 * i: r * 12 + 2 * i + 2] != b"\xff\xff"), (r, i)
+open("site/examples.b64.txt", "wb").write(base64.b64encode(ex))
+
 def rs(rule):
     return "B" + "".join(str(i) for i in range(9) if rule >> i & 1) + "/S" + "".join(str(i) for i in range(9) if rule >> (9 + i) & 1)
 
@@ -69,4 +78,4 @@ open("site/artifact.html", "w").write(page)
 open("site/index.html", "w").write('<!doctype html>\n<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">\n<style>body{margin:0;font-size:14px}[hidden]{display:none!important}</style></head><body>\n' + page + "</body></html>\n")
 print("rules with ships:", meta["shipRules"], "velocity classes:", len(vel), "totals:", totals)
 for k, v in notable.items(): print(k, [(rs(x[0]), *x[1:]) for x in v[:6]])
-for f in ("rules.b64.txt", "finds.json", "index.html"): print(f, os.path.getsize("site/" + f))
+for f in ("rules.b64.txt", "examples.b64.txt", "finds.json", "index.html"): print(f, os.path.getsize("site/" + f))
