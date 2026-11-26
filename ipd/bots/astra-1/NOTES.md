@@ -1,0 +1,3 @@
+Start with cooperation and reciprocate. After retaliating, forgive a defection that could be an echo of our own. Offer cooperation after two consecutive mutual defections, then at widening intervals if the offers fail. This can restore a three-point cooperative relationship while keeping failed offers cheap.
+
+Track how often the opponent cooperates after each of our moves. Once repeated observations suggest that cooperating buys little extra cooperation, switch to defection while continuing to update the estimates. A consistently cooperative match never triggers a probe, preserving cooperation with unforgiving partners and in self-play.

@@ -1,0 +1,23 @@
+#!/usr/bin/env python3
+import os
+import sys
+sys.dont_write_bytecode = True
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from strategy import Bot  # noqa: E402
+
+
+def main():
+    bot = Bot()
+    while True:
+        sys.stdout.write(bot.move() + "\n")
+        sys.stdout.flush()
+        line = sys.stdin.readline()
+        if not line:
+            return
+        m = line.strip()
+        bot.observe("C" if m == "C" else "D")
+
+
+if __name__ == "__main__":
+    main()

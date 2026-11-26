@@ -1,0 +1,50 @@
+#!/usr/bin/env python3
+import sys
+
+
+def play():
+    mine = []
+    theirs = []
+    # Count the opponent's next move after each of our actions.
+    replies = {"C": [], "D": []}
+    repair_at = 0
+    while True:
+        move = "C"
+        if theirs:
+            if theirs[-1] == "D":
+                move = "D"
+                # Accept one retaliation after we defected against cooperation.
+                if len(mine) >= 2 and mine[-2] == "D" and theirs[-2] == "C":
+                    move = "C"
+                # Occasionally offer a reset from mutual defection, giving
+                # a slow-to-forgive opponent two consecutive cooperative moves.
+                if len(mine) == repair_at and mine[-1] == "C":
+                    move = "C"
+                elif len(mine) >= repair_at and mine[-4:] == ["D"] * 4:
+                    move = "C"
+                    repair_at = len(mine) + 1
+            # Against an erratic opponent, test whether cooperation actually
+            # improves their response. Use recent samples so behavior can shift.
+            after_c = replies["C"][-32:]
+            after_d = replies["D"][-32:]
+            if len(after_c) >= 8 and len(after_d) >= 6:
+                pc = after_c.count("C") / len(after_c)
+                pd = after_d.count("C") / len(after_d)
+                if pc < 0.78 and pc - pd < 0.18:
+                    move = "D"
+            if len(mine) == repair_at and mine[-1] == "C" and repair_at:
+                repair_at = 3 * repair_at + 5
+
+        print(move, flush=True)
+        line = sys.stdin.readline()
+        if not line:
+            return
+        opponent = line.strip()
+        if mine:
+            replies[mine[-1]].append(opponent)
+        mine.append(move)
+        theirs.append(opponent)
+
+
+if __name__ == "__main__":
+    play()

@@ -1,0 +1,59 @@
+#!/usr/bin/env python3
+import sys
+
+mine = []
+theirs = []
+mode = 'normal'
+probe_turn = -100
+
+while True:
+    n = len(theirs)
+    if n == 0:
+        move = 'C'
+    elif mode == 'probe1':
+        # The opponent is now responding to the first deliberate defection.
+        if theirs[-1] == 'C':
+            move = 'D'
+            mode = 'probe2'
+        else:
+            move = 'C'
+            mode = 'recover'
+    elif mode == 'probe2':
+        if theirs[-1] == 'C':
+            move = 'D'
+            mode = 'exploit'
+        else:
+            move = 'C'
+            mode = 'recover'
+    elif mode == 'exploit':
+        if theirs[-1] == 'C':
+            move = 'D'
+        else:
+            move = 'C'
+            mode = 'recover'
+    elif mode == 'recover':
+        # Give a retaliator time to see our apology and return to cooperation.
+        move = 'C'
+        mode = 'normal'
+    elif n >= 12 and n - probe_turn >= 60 and all(x == 'C' for x in theirs[-10:]) and all(x == 'C' for x in mine[-10:]):
+        move = 'D'
+        mode = 'probe1'
+        probe_turn = n
+    elif theirs[-1] == 'C':
+        move = 'C'
+    else:
+        # Occasional unilateral forgiveness can escape mutual defection.
+        mutual_d = 0
+        for a, b in zip(reversed(mine), reversed(theirs)):
+            if a != 'D' or b != 'D':
+                break
+            mutual_d += 1
+        move = 'C' if mutual_d and mutual_d % 30 == 0 else 'D'
+    print(move, flush=True)
+    response = sys.stdin.readline().strip()
+    if not response:
+        break
+    if response not in ('C', 'D'):
+        break
+    mine.append(move)
+    theirs.append(response)

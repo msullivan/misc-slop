@@ -1,0 +1,178 @@
+#!/usr/bin/env python3
+"""fable-1: tit-for-tat core with echo forgiveness, peace offers, a reactive
+opponent model that switches to all-D against unresponsive opponents, and an
+occasional cautious probe for opponents that never retaliate. See NOTES.md."""
+import sys
+import random
+
+PROBE_PROB = 0.25          # fraction of matches in which we probe at all
+
+
+class Bot:
+    def __init__(self):
+        self.my = []
+        self.op = []
+        # decayed stats: opponent cooperation after my C (p) / after my D (q)
+        self.pn, self.pc = 1.0, 1.0
+        self.qn, self.qc = 0.0, 0.0
+        self.unprov = 0.0          # decayed count of unprovoked defections
+        self.olive = 0             # forced-C rounds remaining
+        self.defect_mode = False
+        self.dm_since = 0
+        self.dm_gap = 25
+        self.last_cc = 0           # last round of mutual cooperation
+        self.peace_gap = 6
+        self.next_peace = 6
+        # probing / exploitation state machine
+        self.probe_round = random.randint(8, 25) if random.random() < PROBE_PROB else None
+        self.stage = 'none'        # none, alt, full, apol, altf, off
+        self.stage_start = 0
+        self.apol_n = 0
+
+    # -- bookkeeping -------------------------------------------------------
+    def observe(self):
+        t = len(self.op)           # rounds completed
+        if t >= 2:
+            resp, prev = self.op[-1], self.my[-2]
+            if prev == 'C':
+                self.pn = self.pn * 0.95 + 1
+                self.pc = self.pc * 0.95 + (resp == 'C')
+            else:
+                self.qn = self.qn * 0.95 + 1
+                self.qc = self.qc * 0.95 + (resp == 'C')
+        self.unprov *= 0.98
+        if self.op[-1] == 'D' and all(m == 'C' for m in self.my[-3:-1]):
+            self.unprov += 1
+        if self.my[-1] == 'C' and self.op[-1] == 'C':
+            self.last_cc = t
+            self.peace_gap = 6
+            self.next_peace = t + 6
+
+    def p(self):
+        return self.pc / self.pn
+
+    def q(self):
+        return self.qc / self.qn if self.qn > 0 else 0.0
+
+    # -- exploitation of non-retaliators -----------------------------------
+    def exploit(self, t):
+        """Return a move, or None to fall through to the normal logic."""
+        if self.stage == 'none':
+            if (self.probe_round is not None and t >= self.probe_round
+                    and 'D' not in self.op and 'D' not in self.my):
+                self.stage, self.stage_start = 'alt', t
+                self.probe_round = None
+                return 'D'
+            return None
+        if self.stage == 'off':
+            return None
+        since = self.op[self.stage_start:]
+        if self.stage == 'alt':
+            if 'D' in since:
+                return self.stop()
+            k = t - self.stage_start
+            if k >= 6:
+                self.stage = 'full'
+                return 'D'
+            return 'D' if k % 2 == 0 else 'C'
+        if self.stage == 'full':
+            if self.op[-1] == 'D':
+                self.stage, self.apol_n = 'apol', 1
+                return 'C'
+            return 'D'
+        if self.stage == 'apol':
+            if self.op[-1] == 'C':
+                self.stage, self.stage_start = 'altf', t
+                return 'D'
+            self.apol_n += 1
+            if self.apol_n > 4:
+                return self.stop()
+            return 'C'
+        if self.stage == 'altf':
+            if 'D' in since:
+                return self.stop()
+            return 'D' if (t - self.stage_start) % 2 == 0 else 'C'
+        return None
+
+    def stop(self):
+        self.stage = 'off'
+        self.qn = self.qc = 0.0    # those samples were bought by probing
+        self.unprov = 0.0
+        return None
+
+    # -- main decision -------------------------------------------------------
+    def move(self):
+        t = len(self.my)
+        if t == 0:
+            return 'C'
+        self.observe()
+
+        m = self.exploit(t)
+        if m is not None:
+            return m
+
+        if self.olive > 0:
+            self.olive -= 1
+            return 'C'
+
+        p, q = self.p(), self.q()
+        if self.defect_mode:
+            if self.qn >= 2.5 and 1 + 4 * q < 3 * p:
+                # they do punish defection and reward cooperation: make peace
+                self.defect_mode = False
+                self.olive = 1
+                return 'C'
+            if t - self.dm_since >= self.dm_gap:
+                # occasional test of whether cooperation is now reciprocated
+                self.dm_since = t
+                self.dm_gap = min(self.dm_gap * 2, 200)
+                return 'C'
+            return 'D'
+        if self.qn >= 2.5 and 1 + 4 * q > 3 * p + 0.5:
+            # defecting pays better than cooperating against this opponent
+            self.defect_mode = True
+            self.dm_since = t
+            return 'D'
+
+        if self.op[-1] == 'C':
+            return 'C'
+
+        # opponent defected last round
+        if (t >= 2 and self.my[-2] == 'D' and self.op[-2] == 'C'
+                and self.unprov < 2.5):
+            # their D answers a D of mine made while they cooperated: this is
+            # a retaliation echo, absorb it rather than bounce it back
+            return 'C'
+        if t >= self.next_peace and t - self.last_cc >= 6:
+            # long stretch without mutual cooperation: offer peace
+            self.peace_gap = min(self.peace_gap * 2, 100)
+            self.next_peace = t + self.peace_gap
+            self.olive = 1
+            return 'C'
+        return 'D'
+
+
+def main():
+    bot = Bot()
+    out = sys.stdout
+    inp = sys.stdin
+    while True:
+        try:
+            m = bot.move()
+        except Exception as e:      # never fail a match on a bug
+            print(repr(e), file=sys.stderr)
+            m = bot.op[-1] if bot.op else 'C'
+        bot.my.append(m)
+        out.write(m + '\n')
+        out.flush()
+        line = inp.readline()
+        if not line:
+            return
+        bot.op.append('D' if line.strip() == 'D' else 'C')
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except BrokenPipeError:
+        pass

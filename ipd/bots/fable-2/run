@@ -1,0 +1,172 @@
+#!/usr/bin/env python3
+"""fable-2: nice, retaliatory, echo-breaking tit-for-tat with an empirical
+"is defecting simply better here?" fallback for unresponsive opponents.
+See NOTES.md."""
+import sys
+
+PAY = {("C", "C"): 3, ("C", "D"): 0, ("D", "C"): 5, ("D", "D"): 1}
+
+
+class Bot:
+    def __init__(self):
+        self.me = []
+        self.op = []
+        self.pay = []
+        self.peace = 0            # forced-C rounds remaining
+        self.dd_thresh = 2        # mutual-D streak that triggers a peace offer
+        self.forgives = 0         # echo forgivenesses used
+        self.mode = "tft"         # tft | probe | exploit
+        self.mode_start = 0
+        self.baseline = 0.0
+        self.next_probe = 30      # earliest round for the next D-experiment
+        self.cooldown = 60
+        self.cc_run = 0
+        self.next_absorb = 40
+        self.absorb_cd = 80
+
+    # ---- helpers
+    def avg(self, n, upto=None):
+        p = self.pay[:upto][-n:] if upto is not None else self.pay[-n:]
+        return sum(p) / len(p) if p else 3.0
+
+    def model(self, w=60):
+        """Memory-1 estimate of the opponent over the last w rounds.
+        Returns "defect" if they seem to ignore my defections, "absorb" if
+        they cooperate so reliably after my C that never retaliating would
+        beat what I am getting now, else None."""
+        me, op = self.me[-w - 1:], self.op[-w - 1:]
+        nC = cC = nD = cD = 0
+        for i in range(1, len(me)):
+            if me[i - 1] == "C":
+                nC += 1
+                cC += op[i] == "C"
+            else:
+                nD += 1
+                cD += op[i] == "C"
+        if nD < 4:
+            return None
+        pD = cD / nD
+        pC = cC / nC if nC >= 3 else 1.0
+        if nD >= 8 and 1 + 4 * pD > max(3 * pC, self.avg(w)) + 0.4:
+            return "defect"
+        if nC >= 20 and 3 * pC > self.avg(40) + 0.15:
+            return "absorb"
+        return None
+
+    def start_peace(self):
+        self.mode = "tft"
+        self.peace = 2
+
+    # ---- decision
+    def move(self):
+        t = len(self.me)
+        if t == 0:
+            return "C"
+        me, op = self.me, self.op
+
+        if self.mode == "probe":
+            n = t - self.mode_start
+            if n < 20:
+                return "D"
+            got = self.avg(14)
+            if got > self.baseline + 0.25:
+                self.mode = "exploit"
+            else:
+                self.cooldown = min(self.cooldown * 2, 500)
+                self.next_probe = t + self.cooldown
+                self.mode = "tft"
+                if self.baseline > 1.5:
+                    self.peace = 2
+
+        if self.mode == "absorb":
+            if t - self.mode_start < 30 or self.avg(30) >= self.baseline + 0.1:
+                return "C"
+            self.absorb_cd = min(self.absorb_cd * 2, 640)
+            self.next_absorb = t + self.absorb_cd
+            self.mode = "tft"
+
+        if self.mode == "exploit":
+            if self.avg(30) < min(self.baseline, 2.0) + 0.1:
+                self.cooldown = min(self.cooldown * 2, 500)
+                self.next_probe = t + self.cooldown
+                self.start_peace()
+            else:
+                return "D"
+
+        if self.peace > 0:
+            self.peace -= 1
+            return "C"
+
+        # Should we test whether plain defection pays better?
+        verdict = self.model() if t >= 25 else None
+        if (verdict == "absorb" and t >= self.next_absorb
+                and self.avg(40) < 2.75):
+            self.mode = "absorb"
+            self.mode_start = t
+            self.baseline = self.avg(40)
+            return "C"
+        if t >= self.next_probe and (
+                (t >= 40 and self.avg(40) < 2.4) or verdict == "defect"):
+            self.mode = "probe"
+            self.mode_start = t
+            self.baseline = self.avg(40)
+            return "D"
+
+        # relax the peace-offer backoff after sustained cooperation
+        if self.cc_run >= 20:
+            self.dd_thresh = 2
+
+        if op[-1] == "C":
+            return "C"
+
+        # opponent defected last round
+        # 1. echo breaking: their D answers my own D, and they were
+        #    cooperating before it -> accept the punishment, don't re-punish.
+        if t >= 2 and me[-2] == "D" and op[-2] == "C" and me[-1] == "C":
+            if self.forgives < 3 + t // 40:
+                self.forgives += 1
+                return "C"
+
+        # 2. mutual-defection lock: offer peace (two Cs), with backoff.
+        streak = 0
+        for a, b in zip(reversed(me), reversed(op)):
+            if a == "D" and b == "D":
+                streak += 1
+            else:
+                break
+        if streak >= self.dd_thresh:
+            self.dd_thresh *= 2
+            self.peace = 1
+            return "C"
+
+        return "D"
+
+    def observe(self, mine, theirs):
+        self.me.append(mine)
+        self.op.append(theirs)
+        self.pay.append(PAY[(mine, theirs)])
+        self.cc_run = self.cc_run + 1 if mine == theirs == "C" else 0
+
+
+def main():
+    bot = Bot()
+    out, inp = sys.stdout, sys.stdin
+    while True:
+        try:
+            m = bot.move()
+        except Exception as e:  # never crash a match
+            print("error:", repr(e), file=sys.stderr)
+            m = bot.op[-1] if bot.op else "C"
+        out.write(m + "\n")
+        out.flush()
+        line = inp.readline()
+        if not line:
+            return
+        o = line.strip()
+        if o not in ("C", "D"):
+            o = "D"
+        bot.observe(m, o)
+
+
+if __name__ == "__main__":
+    main()

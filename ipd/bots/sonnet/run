@@ -1,0 +1,39 @@
+#!/usr/bin/env python3
+import sys, random
+mine, theirs = [], []
+exploit = False
+probe_at = None
+def decide():
+    n = len(theirs)
+    if n == 0: return 'C'
+    # unconditional defector: give up
+    if n >= 12 and theirs.count('D') == n: return 'D'
+    if n >= 30 and theirs[-30:].count('D') >= 27: return 'D'
+    # exploit detection: one probe defection after a long all-C history
+    global exploit, probe_at
+    if exploit:
+        # abandon if they retaliated
+        if theirs[-1] == 'D' and mine[-2:-1] == ['D'] or theirs[-2:].count('D') >= 1:
+            exploit = False
+            return 'C'
+        return 'D'
+    if probe_at is None and n >= 25 and theirs.count('D') == 0:
+        probe_at = n
+        return 'D'
+    if probe_at is not None and n == probe_at + 1:
+        if theirs[-1] == 'C':
+            exploit = True
+            return 'D'
+        return 'C'
+    if theirs[-1] == 'C': return 'C'
+    # they defected: mirror, with small forgiveness
+    if mine[-1] == 'D' and theirs[-1] == 'D' and random.random() < 0.15: return 'C'
+    if random.random() < 0.08: return 'C'
+    return 'D'
+while True:
+    m = decide()
+    mine.append(m)
+    sys.stdout.write(m + "\n"); sys.stdout.flush()
+    l = sys.stdin.readline()
+    if not l: break
+    theirs.append(l.strip()[:1])

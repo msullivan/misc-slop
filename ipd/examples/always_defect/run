@@ -1,0 +1,5 @@
+#!/bin/sh
+while :; do
+    echo D
+    read -r _ || exit 0
+done

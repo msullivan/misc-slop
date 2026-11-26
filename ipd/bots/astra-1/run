@@ -1,0 +1,49 @@
+#!/usr/bin/env python3
+import sys
+
+
+def play():
+    # For each of our previous actions, count the opponent's next C and D.
+    replies = {"C": [0, 0], "D": [0, 0]}
+    previous = None
+    move = "C"
+    mutual_defections = 0
+    next_reset = 2
+    reset_gap = 4
+
+    while True:
+        print(move, flush=True)
+        other = sys.stdin.readline().strip()
+        if other not in ("C", "D"):
+            return
+        if previous is not None:
+            replies[previous][other == "D"] += 1
+
+        mutual_defections = mutual_defections + 1 if move == other == "D" else 0
+        if move == other == "C":
+            next_reset, reset_gap = 2, 4
+
+        # Default to reciprocity, forgiving the echo of our own retaliation.
+        action = other
+        if move == "C" and other == "D" and previous == "D":
+            action = "C"
+
+        cc, cd = replies["C"]
+        dc, dd = replies["D"]
+        # With enough trials, exploit opponents whose cooperation does not
+        # materially improve when we cooperate. Smooth sparse observations.
+        p_c = (cc + 1) / (cc + cd + 2)
+        p_d = (dc + 1) / (dc + dd + 2)
+        if cd >= 3 and dc >= 3 and p_d + 0.18 >= p_c:
+            action = "D"
+
+        if mutual_defections == next_reset:
+            action = "C"
+            # Count a fresh streak after each olive branch.
+            next_reset = reset_gap
+            reset_gap = min(128, reset_gap * 2)
+        previous = move
+        move = action
+
+
+play()

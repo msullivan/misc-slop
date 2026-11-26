@@ -1,0 +1,6 @@
+#!/usr/bin/env python3
+import random, sys
+while True:
+    print(random.choice("CD"), flush=True)
+    if not sys.stdin.readline():
+        break
